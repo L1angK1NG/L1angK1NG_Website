@@ -1,0 +1,125 @@
+---
+// Selection quote comments — select text in the article, then quote it into the
+// bottom comment box. Comments stay in one canonical thread.
+interface Props {
+  selector?: string;
+}
+
+const { selector = '.post-content' } = Astro.props;
+---
+
+<div data-qc-root data-qc-selector={selector} hidden></div>
+
+<script>
+  const commentsEnabled = Boolean(import.meta.env.PUBLIC_TWIKOO_ENV_ID);
+  let activeRoot = null;
+  let cleanup = () => {};
+
+  const initQuoteComments = () => {
+    const rootMarker = document.querySelector('[data-qc-root]');
+    if (rootMarker === activeRoot) return;
+
+    cleanup();
+    activeRoot = rootMarker;
+    if (!rootMarker || !commentsEnabled) return;
+
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const scopeSelector = rootMarker.dataset.qcSelector;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'qc-pop';
+    button.textContent = '引用评论';
+    button.hidden = true;
+    document.body.append(button);
+
+    let quotedText = '';
+    let returnY = 0;
+    let hideTimer = null;
+
+    const clean = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+
+    const hide = () => {
+      button.hidden = true;
+      quotedText = '';
+    };
+
+    const selectedInScope = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+
+      const text = clean(selection.toString());
+      if (text.length < 2) return null;
+
+      const range = selection.getRangeAt(0);
+      const container =
+        range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement;
+      const scope = container?.closest(scopeSelector);
+      if (!scope) return null;
+
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) return null;
+
+      return { text, rect };
+    };
+
+    const show = () => {
+      window.clearTimeout(hideTimer);
+      const selection = selectedInScope();
+      if (!selection) {
+        hideTimer = window.setTimeout(hide, 120);
+        return;
+      }
+
+      quotedText = selection.text;
+      returnY = window.scrollY;
+
+      const top = Math.max(12, selection.rect.top + window.scrollY - 42);
+      const left = Math.min(
+        window.scrollX + window.innerWidth - 112,
+        Math.max(12, selection.rect.left + window.scrollX + selection.rect.width / 2 - 42),
+      );
+
+      // Position via left/top, NOT transform — the press/entrance animations
+      // use the standalone scale/translate properties, which multiply onto a
+      // transform-based position and would teleport the button off-cursor.
+      button.style.left = `${Math.round(left)}px`;
+      button.style.top = `${Math.round(top)}px`;
+      button.hidden = false;
+    };
+
+    const quote = () => {
+      // Belt and braces: if the stored text was cleared by any event race,
+      // fall back to whatever is selected right now.
+      const live = clean(window.getSelection()?.toString());
+      const detail = { text: quotedText || live, returnY: returnY || window.scrollY };
+      if (!detail.text) return;
+
+      window.dispatchEvent(new CustomEvent('blog:quote-comment', { detail }));
+      window.getSelection()?.removeAllRanges();
+      hide();
+    };
+
+    document.addEventListener('selectionchange', show, { signal });
+    document.addEventListener('mouseup', show, { signal });
+    document.addEventListener('keyup', show, { signal });
+    // The button rides with the document (absolute positioning), so scrolling
+    // must NOT hide it — trackpad inertia was killing it before the click.
+    window.addEventListener('resize', hide, { passive: true, signal });
+    // Pressing the button would collapse the selection on mousedown (which
+    // hid the button before click could fire). Keep the selection alive.
+    button.addEventListener('mousedown', (event) => event.preventDefault(), { signal });
+    button.addEventListener('click', quote, { signal });
+
+    cleanup = () => {
+      controller.abort();
+      window.clearTimeout(hideTimer);
+      button.remove();
+    };
+  };
+
+  initQuoteComments();
+  document.addEventListener('astro:page-load', initQuoteComments);
+</script>

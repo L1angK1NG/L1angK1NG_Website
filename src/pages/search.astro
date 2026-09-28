@@ -1,0 +1,149 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="搜索"
+  description="搜索L1angK1NG博客中的文章、分类和标签。"
+  pageClass="content-page"
+>
+  <section class="search-page">
+    <header class="page-header">
+      <p class="eyebrow">Search</p>
+      <h1>搜索文章</h1>
+      <p>输入关键词，快速找到标题、摘要、分类或标签匹配的内容。</p>
+    </header>
+
+    <form class="search-box" role="search">
+      <label for="search-input">关键词</label>
+      <div class="search-box__control">
+        <input
+          id="search-input"
+          name="q"
+          type="search"
+          placeholder="Cursor、部署、Midjourney..."
+          autocomplete="off"
+        />
+        <button type="submit">搜索</button>
+      </div>
+    </form>
+
+    <p class="search-status" data-search-status>正在加载索引...</p>
+    <div class="search-results post-list" data-search-results></div>
+  </section>
+
+  <script is:inline data-astro-rerun>
+    const form = document.querySelector('.search-box');
+    const input = document.querySelector('#search-input');
+    const status = document.querySelector('[data-search-status]');
+    const results = document.querySelector('[data-search-results]');
+    const params = new URLSearchParams(window.location.search);
+    const initialQuery = params.get('q') ?? '';
+    let posts = [];
+
+    const escapeHtml = (value) =>
+      String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+
+    const normalize = (value) => value.trim().toLowerCase();
+
+    const renderIdle = () => {
+      status.textContent = `已索引 ${posts.length} 篇文章。`;
+      results.innerHTML = '';
+    };
+
+    const renderResults = (query) => {
+      const normalizedQuery = normalize(query);
+
+      if (!normalizedQuery) {
+        renderIdle();
+        return;
+      }
+
+      const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+      const matches = posts
+        .map((post) => ({
+          post,
+          score: terms.reduce((score, term) => {
+            if (post.title.toLowerCase().includes(term)) return score + 4;
+            if (post.category.toLowerCase().includes(term)) return score + 3;
+            if (post.tags.join(' ').toLowerCase().includes(term)) return score + 2;
+            if (post.text.includes(term)) return score + 1;
+            return score;
+          }, 0),
+        }))
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score || a.post.title.localeCompare(b.post.title, 'zh-CN'));
+
+      status.textContent = matches.length
+        ? `找到 ${matches.length} 篇相关文章。`
+        : '没有找到匹配文章。';
+
+      results.innerHTML = matches
+        .map(({ post }) => {
+          const tags = post.tags
+            .slice(0, 4)
+            .map((tag) => `<span>${escapeHtml(tag)}</span>`)
+            .join('');
+
+          return `
+            <article class="post-row post-row--plain is-revealed">
+              <a href="${escapeHtml(post.url)}">
+                <div class="post-row__main">
+                  <div class="post-meta">
+                    ${post.category ? `<span>${escapeHtml(post.category)}</span>` : ''}
+                    ${post.date ? `<span>${escapeHtml(post.date)}</span>` : ''}
+                  </div>
+                  <h3>${escapeHtml(post.title)}</h3>
+                  ${post.description ? `<p>${escapeHtml(post.description)}</p>` : ''}
+                  ${tags ? `<div class="tag-list" aria-label="标签">${tags}</div>` : ''}
+                </div>
+              </a>
+            </article>
+          `;
+        })
+        .join('');
+    };
+
+    const syncUrl = (query) => {
+      const nextUrl = new URL(window.location.href);
+
+      if (query) {
+        nextUrl.searchParams.set('q', query);
+      } else {
+        nextUrl.searchParams.delete('q');
+      }
+
+      window.history.replaceState({}, '', nextUrl);
+    };
+
+    const runSearch = () => {
+      const query = input.value.trim();
+      syncUrl(query);
+      renderResults(query);
+    };
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      runSearch();
+    });
+
+    input.addEventListener('input', runSearch);
+
+    input.value = initialQuery;
+
+    fetch('/search.json')
+      .then((response) => response.json())
+      .then((items) => {
+        posts = items;
+        renderResults(input.value);
+      })
+      .catch(() => {
+        status.textContent = '搜索索引加载失败。';
+      });
+  </script>
+</BaseLayout>

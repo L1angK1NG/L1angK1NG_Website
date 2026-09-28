@@ -1,0 +1,34 @@
+---
+import { getPostCategory, getPostExcerpt, type BlogPost } from '../lib/posts';
+
+interface Props {
+  post: BlogPost;
+  hideYear?: boolean;
+  compact?: boolean;
+}
+
+const { post, hideYear = false, compact = false } = Astro.props;
+const date = post.data.date;
+const pad = (n: number) => String(n).padStart(2, '0');
+const monthDay = date ? `${pad(date.getMonth() + 1)}·${pad(date.getDate())}` : '';
+const excerpt = compact ? undefined : getPostExcerpt(post);
+const category = getPostCategory(post);
+---
+
+<article class:list={['post-row', compact && 'post-row--compact', !date && 'post-row--plain']}>
+  <a href={`/posts/${post.id}/`}>
+    {date && (
+      <time class="post-row__date" datetime={date.toISOString()}>
+        <span class="post-row__md">{monthDay}</span>
+        {!hideYear && <span class="post-row__yy">{date.getFullYear()}</span>}
+      </time>
+    )}
+    <div class="post-row__main">
+      <div class="post-row__line">
+        <h3>{post.data.title}</h3>
+        {category && <span class="post-row__cat">{category}</span>}
+      </div>
+      {excerpt && <p>{excerpt}</p>}
+    </div>
+  </a>
+</article>

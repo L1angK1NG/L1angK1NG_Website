@@ -1,0 +1,183 @@
+---
+import Icon from '../components/Icon.astro';
+import PostSummary from '../components/PostSummary.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import {
+  formatDate,
+  getPostCategory,
+  getPostCover,
+  getPostDescription,
+  site,
+  sortPosts,
+  sortPostsByDate,
+} from '../lib/posts';
+import { getPublishedPosts } from '../lib/posts';
+
+const posts = sortPosts(await getPublishedPosts());
+const featuredPosts = posts.filter((post) => (post.data.sticky ?? 0) > 0);
+const latestPosts = sortPostsByDate(posts).slice(0, 8);
+
+// Hero "精选" picks: sticky posts first, topped up with the latest, max 3.
+const heroPicks = [
+  ...featuredPosts,
+  ...latestPosts.filter((post) => !featuredPosts.some((f) => f.id === post.id)),
+].slice(0, 5);
+
+// Warm clay/amber band for cover-less featured items, on palette.
+const coverHue = (value: string) => {
+  let hash = 0;
+  for (const char of value) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  }
+  return 12 + (hash % 32);
+};
+
+---
+
+<BaseLayout title={site.name} description={site.description} pageClass="home-page">
+  <section class="hero">
+    <div class="hero__intro">
+      <img
+        src="/avatars/avatar.jpg"
+        alt="L1angK1NG头像"
+        class="hero__avatar"
+        width="80"
+        height="80"
+      />
+      <p class="eyebrow">AI · Code · Web</p>
+      <h1 class="hero__title">你好，我是L1angK1NG</h1>
+      <p class="hero__bio">
+        这里记录 AI 工具、代码实践、网站搭建和一些技术观察。文章偏实用，也保留个人判断。
+      </p>
+      <div class="hero__actions">
+        <a class="text-link" href="/archive/">
+          浏览文章
+          <Icon name="arrow-right" size={18} />
+        </a>
+        <span class="hero__social" aria-label="社交链接">
+          <a
+            class="icon-button"
+            href="https://space.bilibili.com/46377861"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Bilibili"
+          >
+            <Icon name="bilibili" />
+          </a>
+          <a
+            class="icon-button"
+            href="https://www.douyin.com/user/self"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="抖音"
+          >
+            <Icon name="douyin" />
+          </a>
+          <a
+            class="icon-button"
+            href="https://www.youtube.com/channel/UCUuwwXFGK8Z3OBrq6PzkmUg"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="YouTube"
+          >
+            <Icon name="youtube" />
+          </a>
+          <a
+            class="icon-button"
+            href="https://x.com/shenfanlaogou"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="X"
+          >
+            <Icon name="x-platform" />
+          </a>
+          <a class="icon-button" href="/rss.xml" aria-label="RSS 订阅">
+            <Icon name="rss" />
+          </a>
+        </span>
+      </div>
+    </div>
+
+    {heroPicks.length > 0 && (
+      <aside class="hero__picks" aria-label="精选文章">
+        <p class="hero__picks-label">精选</p>
+        <div class="picks">
+          <a class="pick-hero" href={`/posts/${heroPicks[0].id}/`}>
+            {getPostCover(heroPicks[0]) ? (
+              <span class="pick-hero__thumb">
+                <img
+                  src={getPostCover(heroPicks[0])}
+                  alt=""
+                  loading="eager"
+                  fetchpriority="high"
+                  referrerpolicy="no-referrer"
+                />
+              </span>
+            ) : (
+              <span
+                class="pick-hero__thumb pick__thumb--fallback"
+                style={`--h:${coverHue(heroPicks[0].data.title)}`}
+              />
+            )}
+            <span class="post-meta">
+              {getPostCategory(heroPicks[0]) && <span>{getPostCategory(heroPicks[0])}</span>}
+              {heroPicks[0].data.date && (
+                <time datetime={heroPicks[0].data.date.toISOString()}>
+                  {formatDate(heroPicks[0].data.date)}
+                </time>
+              )}
+            </span>
+            <span class="pick-hero__title">{heroPicks[0].data.title}</span>
+            <span class="pick-hero__desc">{getPostDescription(heroPicks[0])}</span>
+          </a>
+
+          {heroPicks.length > 1 && (
+            <ul class="pick-side">
+              {heroPicks.slice(1, 5).map((post) => (
+                <li>
+                  <a class="pick-side__item" href={`/posts/${post.id}/`}>
+                    {getPostCover(post) ? (
+                      <span class="pick-side__thumb">
+                        <img src={getPostCover(post)} alt="" loading="lazy" referrerpolicy="no-referrer" />
+                      </span>
+                    ) : (
+                      <span
+                        class="pick-side__thumb pick__thumb--fallback"
+                        style={`--h:${coverHue(post.data.title)}`}
+                      />
+                    )}
+                    <span class="pick-side__text">
+                      <span class="pick-side__title">{post.data.title}</span>
+                      {post.data.date && (
+                        <time class="pick-side__date" datetime={post.data.date.toISOString()}>
+                          {formatDate(post.data.date)}
+                        </time>
+                      )}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </aside>
+    )}
+  </section>
+
+
+  <section class="section">
+    <div class="section__header section__header--row">
+      <div>
+        <h2>最新文章</h2>
+        <p>持续更新 AI、开发和建站相关笔记。</p>
+      </div>
+      <a class="section__more" href="/archive/">
+        全部 {posts.length} 篇
+        <Icon name="arrow-right" size={16} />
+      </a>
+    </div>
+    <div class="post-list" aria-label="文章列表">
+      {latestPosts.map((post) => <PostSummary post={post} />)}
+    </div>
+  </section>
+</BaseLayout>

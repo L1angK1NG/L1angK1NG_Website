@@ -1,0 +1,85 @@
+---
+// Bottom comment box — custom UI on the Twikoo backend (shared module).
+interface Props {
+  title?: string;
+}
+const { title = '评论' } = Astro.props;
+---
+
+<section class="cbox" data-cbox>
+  <div class="cbox__head">
+    <h2 class="cbox__title">{title}</h2>
+    <span class="cbox__count" data-c-count></span>
+  </div>
+  <div data-c-mount></div>
+</section>
+
+<script>
+  import { mountComments } from '../lib/comments.js';
+
+  const ENV_ID = import.meta.env.PUBLIC_TWIKOO_ENV_ID;
+  let activeRoot = null;
+  let cleanup = () => {};
+
+  const initComments = () => {
+    const root = document.querySelector('[data-cbox]');
+    if (root === activeRoot) return;
+
+    cleanup();
+    activeRoot = root;
+    if (!root) return;
+    if (!ENV_ID) {
+      root.hidden = true;
+      return;
+    }
+
+    const controller = new AbortController();
+    const mountEl = root.querySelector('[data-c-mount]');
+    const countEl = root.querySelector('[data-c-count]');
+    let started = false;
+    let api = null;
+
+    const start = () => {
+      if (started) return api;
+      started = true;
+      api = mountComments(mountEl, {
+        envId: ENV_ID,
+        url: location.pathname,
+        onCount: (n) => {
+          countEl.textContent = n ? `· ${n}` : '';
+        },
+      });
+      return api;
+    };
+
+    const quoteComment = (detail) => {
+      const instance = start();
+      root.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.setTimeout(() => instance?.quote(detail), 180);
+    };
+
+    window.addEventListener(
+      'blog:quote-comment',
+      (event) => quoteComment(event.detail),
+      { signal: controller.signal },
+    );
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          start();
+          io.disconnect();
+        }
+      },
+      { rootMargin: '400px' },
+    );
+    io.observe(root);
+    cleanup = () => {
+      controller.abort();
+      io.disconnect();
+    };
+  };
+
+  initComments();
+  document.addEventListener('astro:page-load', initComments);
+</script>

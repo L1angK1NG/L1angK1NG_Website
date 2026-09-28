@@ -1,0 +1,670 @@
+---
+import Footer from '../components/Footer.astro';
+import MusicPlayer from '../components/MusicPlayer.astro';
+import Nav from '../components/Nav.astro';
+import { ClientRouter } from 'astro:transitions';
+import { absoluteUrl, site } from '../lib/posts';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  pageClass?: string;
+  image?: string;
+  type?: 'website' | 'article';
+  jsonLd?: unknown;
+}
+
+const {
+  title = site.name,
+  description = site.description,
+  pageClass = '',
+  image = '/avatars/avatar.jpg',
+  type = 'website',
+  jsonLd,
+} = Astro.props;
+
+const pageTitle = title === site.name ? title : `${title} - ${site.name}`;
+const canonicalUrl = absoluteUrl(Astro.url.pathname);
+const imageUrl = image ? absoluteUrl(image) : undefined;
+
+const websiteSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: site.name,
+  url: site.url,
+  description: site.description,
+  inLanguage: 'zh-CN',
+  author: { '@type': 'Person', name: site.author, url: site.url },
+};
+
+const ldScripts = [websiteSchema, ...(jsonLd ? [jsonLd] : [])];
+
+// Route motion is deliberately scoped to the page content. The site chrome
+// stays still, and the outgoing content is nearly gone before the incoming
+// content starts, so text never crossfades on top of text.
+const routeMotion = {
+  forwards: {
+    old: {
+      name: 'blogRouteOut',
+      duration: '70ms',
+      easing: 'cubic-bezier(0.4, 0, 1, 1)',
+      fillMode: 'both',
+    },
+    new: {
+      name: 'blogRouteIn',
+      duration: '130ms',
+      delay: '70ms',
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      fillMode: 'both',
+    },
+  },
+  backwards: {
+    old: {
+      name: 'blogRouteOut',
+      duration: '70ms',
+      easing: 'cubic-bezier(0.4, 0, 1, 1)',
+      fillMode: 'both',
+    },
+    new: {
+      name: 'blogRouteIn',
+      duration: '130ms',
+      delay: '70ms',
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      fillMode: 'both',
+    },
+  },
+};
+---
+
+<!doctype html>
+<html lang="zh-CN" transition:name="root" transition:animate="none">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="author" content={site.author} />
+    <meta id="theme-color" name="theme-color" content="#f8f7f4" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" type="image/jpeg" href="/avatars/avatar.jpg" />
+    <link rel="apple-touch-icon" href="/avatars/avatar.jpg" />
+    {import.meta.env.PUBLIC_TWIKOO_ENV_ID && (
+      <link rel="preconnect" href={import.meta.env.PUBLIC_TWIKOO_ENV_ID} crossorigin />
+    )}
+    <link rel="preconnect" href="https://cravatar.cn" />
+    <title>{pageTitle}</title>
+    <link rel="canonical" href={canonicalUrl} />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title={`${site.name} RSS`}
+      href={absoluteUrl('/rss.xml')}
+    />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={type} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:locale" content="zh_CN" />
+    {imageUrl && <meta property="og:image" content={imageUrl} />}
+    <meta name="twitter:card" content={imageUrl ? 'summary_large_image' : 'summary'} />
+    <meta name="twitter:title" content={pageTitle} />
+    <meta name="twitter:description" content={description} />
+    {imageUrl && <meta name="twitter:image" content={imageUrl} />}
+    {ldScripts.map((schema) => (
+      <script
+        type="application/ld+json"
+        set:html={JSON.stringify(schema).replace(/</g, '\\u003c')}
+      />
+    ))}
+    <ClientRouter />
+    <script is:inline>
+      (() => {
+        const storageKey = 'blog-theme';
+        const lightColor = '#f8f7f4';
+        const darkColor = '#0e1116';
+        const getTheme = () => {
+          try {
+            const stored = localStorage.getItem(storageKey);
+            if (stored) return stored;
+          } catch {
+          }
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        };
+        const restoreTheme = () => {
+          const theme = getTheme();
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.classList.add('js');
+          document.querySelector('#theme-color')?.setAttribute(
+            'content',
+            theme === 'dark' ? darkColor : lightColor,
+          );
+        };
+
+        restoreTheme();
+        // ClientRouter swaps the <html> attributes. Restore the chosen theme
+        // synchronously inside the swap callback, before the new frame paints.
+        document.addEventListener('astro:after-swap', restoreTheme);
+      })();
+    </script>
+  </head>
+  <body class={pageClass}>
+    <a class="skip-link" href="#main">跳到正文</a>
+    {pageClass === 'article-page' && (
+      <div class="reading-progress" aria-hidden="true">
+        <span data-reading-progress></span>
+      </div>
+    )}
+    <Nav />
+    <main id="main" transition:name="page-content" transition:animate={routeMotion}>
+      <slot />
+    </main>
+    <Footer />
+    <MusicPlayer />
+    <button type="button" class="to-top" data-to-top aria-label="回到顶部">
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.9"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 19V5M6 11l6-6 6 6" />
+      </svg>
+    </button>
+    <script is:inline data-astro-rerun>
+      (() => {
+        window.__blogRevealController?.abort();
+        const controller = new AbortController();
+        window.__blogRevealController = controller;
+        const signal = controller.signal;
+        const sel =
+          '.hero__intro > *, .hero__picks, .section__header, .section__more, .post-row, .related-posts, .post-nav, .article__header > *, .article__main > .article__cover, .proj-section__head, .proj, .page-header, .archive-summary, .archive-year__head, .about__intro > *, .note';
+
+        // This fires inside ClientRouter's DOM-swap callback, before the browser
+        // captures the incoming frame. It prevents the page-level fade from
+        // snapshotting above-the-fold content in its hidden reveal state.
+        const revealIncomingFrame = () => {
+          // Route content already has one page-level entrance. Reveal every
+          // incoming child before capture so the swap callback performs no
+          // geometry reads and cannot extend the transition's blank interval.
+          const visible = [...document.querySelectorAll(sel)];
+
+          visible.forEach((el) => {
+            el.style.transition = 'none';
+            el.classList.add('is-revealed');
+            el.dataset.revealed = '1';
+          });
+
+          window.requestAnimationFrame(() => {
+            visible.forEach((el) => {
+              el.style.transition = '';
+            });
+          });
+        };
+        document.addEventListener('astro:after-swap', revealIncomingFrame, { signal });
+
+        const targets = [...document.querySelectorAll(sel)];
+
+        if (!targets.length) {
+          return;
+        }
+
+        // Position-based reveal: robust to fast scroll jumps, anchor links and
+        // restored scroll (anything at/above the viewport reveals; off-screen
+        // content that was jumped past simply appears without re-animating).
+        let ticking = false;
+        const routeSwap = document.documentElement.hasAttribute('data-astro-transition');
+        const reveal = () => {
+          ticking = false;
+          const line = window.innerHeight * 0.94;
+          const batch = [];
+          for (const el of targets) {
+            if (el.dataset.revealed) {
+              continue;
+            }
+            if (el.getBoundingClientRect().top < line) {
+              batch.push(el);
+            }
+          }
+          // Stagger only the items that cross in together (e.g. the on-load batch).
+          batch.forEach((el, index) => {
+            if (routeSwap) {
+              el.style.transition = 'none';
+              window.requestAnimationFrame(() => {
+                el.style.transition = '';
+              });
+            } else {
+              el.style.setProperty('--reveal-delay', Math.min(index, 6) * 0.06 + 's');
+            }
+            el.classList.add('is-revealed');
+            el.dataset.revealed = '1';
+          });
+        };
+        const onScroll = () => {
+          if (!ticking) {
+            ticking = true;
+            window.requestAnimationFrame(reveal);
+          }
+        };
+
+        window.addEventListener('scroll', onScroll, { passive: true, signal });
+        window.addEventListener('resize', onScroll, { passive: true, signal });
+        window.addEventListener('load', reveal, { signal });
+        window.requestAnimationFrame(reveal);
+      })();
+    </script>
+    <script is:inline data-astro-rerun>
+      (() => {
+        // Mark article images once their bytes arrive so CSS can fade them in.
+        document.querySelectorAll('.post-content img').forEach((img) => {
+          const mark = () => img.classList.add('is-loaded');
+          if (img.complete) {
+            mark();
+            return;
+          }
+          img.addEventListener('load', mark, { once: true });
+          img.addEventListener('error', mark, { once: true });
+        });
+      })();
+    </script>
+    <script is:inline data-astro-rerun>
+      window.__blogPageController?.abort();
+      window.__blogPageController = new AbortController();
+
+      (() => {
+        const signal = window.__blogPageController.signal;
+        const storageKey = 'blog-theme';
+        const lightColor = '#f8f7f4';
+        const darkColor = '#0e1116';
+        const button = document.querySelector('[data-theme-toggle]');
+        const themeColor = document.querySelector('#theme-color');
+        const getStoredTheme = () => {
+          try {
+            return localStorage.getItem(storageKey);
+          } catch {
+            return null;
+          }
+        };
+        const setStoredTheme = (theme) => {
+          try {
+            localStorage.setItem(storageKey, theme);
+          } catch {
+          }
+        };
+
+        const getSystemTheme = () =>
+          window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+
+        const applyTheme = (theme, persist = true) => {
+          document.documentElement.dataset.theme = theme;
+          themeColor?.setAttribute('content', theme === 'dark' ? darkColor : lightColor);
+
+          if (button) {
+            button.dataset.themeIcon = theme;
+            button.setAttribute(
+              'aria-label',
+              theme === 'dark' ? '切换到浅色模式' : '切换到深色模式',
+            );
+            button.setAttribute('aria-pressed', String(theme === 'dark'));
+          }
+
+          if (persist) {
+            setStoredTheme(theme);
+          }
+        };
+
+        const currentTheme = () =>
+          document.documentElement.dataset.theme || getStoredTheme() || getSystemTheme();
+
+        // Inject literal percentages instead of px values or dynamic vars.
+        // Chrome rasterizes view-transition snapshots at device-pixel density;
+        // px clip coordinates can therefore render at half-size on a 2x screen,
+        // leaving part of the viewport uncovered until the snapshot disappears.
+        // Exact percentages stay in the snapshot's own coordinate space.
+        const themeRevealStyle =
+          document.getElementById('theme-reveal-style') ??
+          (() => {
+            const styleEl = document.createElement('style');
+            styleEl.id = 'theme-reveal-style';
+            document.head.append(styleEl);
+            return styleEl;
+          })();
+
+        applyTheme(currentTheme(), false);
+
+        const motionOK = window.matchMedia('(prefers-reduced-motion: no-preference)').matches;
+        let themeAnimTimer;
+        let themeSwitching = false;
+        button?.addEventListener('click', () => {
+          if (themeSwitching) return;
+          const next = currentTheme() === 'dark' ? 'light' : 'dark';
+          const root = document.documentElement;
+
+          // New theme sweeps out of the toggle as an expanding circle.
+          if (
+            motionOK &&
+            document.startViewTransition &&
+            !root.hasAttribute('data-astro-transition')
+          ) {
+            const rect = button.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            const radius =
+              Math.hypot(
+                Math.max(x, window.innerWidth - x),
+                Math.max(y, window.innerHeight - y),
+              ) + 20;
+            const xPercent = (x / window.innerWidth) * 100;
+            const yPercent = (y / window.innerHeight) * 100;
+            // CSS resolves a circle's percentage radius against the normalized
+            // diagonal: hypot(width, height) / sqrt(2).
+            const radiusReference =
+              Math.hypot(window.innerWidth, window.innerHeight) / Math.SQRT2;
+            const radiusPercent = (radius / radiusReference) * 100;
+
+            themeSwitching = true;
+            button.classList.add('is-switching');
+            themeRevealStyle.textContent = `@keyframes theme-reveal { from { clip-path: circle(0 at ${xPercent.toFixed(4)}% ${yPercent.toFixed(4)}%); } to { clip-path: circle(${radiusPercent.toFixed(4)}% at ${xPercent.toFixed(4)}% ${yPercent.toFixed(4)}%); } }`;
+            root.classList.add('theme-vt');
+            const vt = document.startViewTransition(() => applyTheme(next));
+            vt.finished
+              .catch(() => {})
+              .finally(() => {
+                themeSwitching = false;
+                button.classList.remove('is-switching');
+                root.classList.remove('theme-vt');
+              });
+            return;
+          }
+
+          applyTheme(next);
+          if (motionOK) {
+            root.classList.remove('theme-anim');
+            void root.offsetWidth;
+            root.classList.add('theme-anim');
+            window.clearTimeout(themeAnimTimer);
+            themeAnimTimer = window.setTimeout(() => root.classList.remove('theme-anim'), 380);
+          }
+        }, { signal });
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+          if (!getStoredTheme()) {
+            applyTheme(getSystemTheme(), false);
+          }
+        }, { signal });
+      })();
+
+      (() => {
+        const signal = window.__blogPageController.signal;
+        const writeClipboard = async (text) => {
+          if (globalThis.navigator?.clipboard?.writeText) {
+            await globalThis.navigator.clipboard.writeText(text);
+            return true;
+          }
+
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.append(textarea);
+          textarea.select();
+          const copied = document.execCommand('copy');
+          textarea.remove();
+          return copied;
+        };
+
+        document.querySelectorAll('.post-content pre').forEach((pre) => {
+          if (pre.querySelector('[data-copy-code]')) {
+            return;
+          }
+
+          const code = pre.querySelector('code');
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'copy-code-button';
+          button.dataset.copyCode = '';
+          button.textContent = '复制';
+          button.setAttribute('aria-label', '复制代码');
+          pre.append(button);
+
+          button.addEventListener('click', async () => {
+            const text = code?.innerText ?? pre.innerText.replace(button.innerText, '');
+
+            try {
+              const copied = await writeClipboard(text.trimEnd());
+
+              if (!copied) {
+                throw new Error('Copy command failed');
+              }
+
+              button.textContent = '已复制';
+              button.classList.add('is-copied');
+              window.setTimeout(() => {
+                button.textContent = '复制';
+                button.classList.remove('is-copied');
+              }, 1800);
+            } catch {
+              button.textContent = '复制失败';
+              window.setTimeout(() => {
+                button.textContent = '复制';
+              }, 1800);
+            }
+          }, { signal });
+        });
+      })();
+
+      (() => {
+        const signal = window.__blogPageController.signal;
+        const images = document.querySelectorAll(
+          '.post-content img:not(.legacy-inline-image)',
+        );
+
+        if (!images.length) {
+          return;
+        }
+
+        let overlay = null;
+
+        const onKey = (event) => {
+          if (event.key === 'Escape') {
+            close();
+          }
+        };
+
+        function close() {
+          if (!overlay) {
+            return;
+          }
+
+          const node = overlay;
+          overlay = null;
+          node.classList.remove('is-open');
+          document.removeEventListener('keydown', onKey);
+          window.setTimeout(() => node.remove(), 200);
+        }
+
+        const open = (source, alt) => {
+          overlay = document.createElement('div');
+          overlay.className = 'lightbox';
+          overlay.setAttribute('role', 'dialog');
+          overlay.setAttribute('aria-modal', 'true');
+          overlay.setAttribute('aria-label', alt || '图片预览');
+
+          const full = document.createElement('img');
+          full.src = source;
+          full.alt = alt || '';
+          overlay.append(full);
+          overlay.addEventListener('click', close, { signal });
+          document.body.append(overlay);
+          requestAnimationFrame(() => overlay?.classList.add('is-open'));
+          document.addEventListener('keydown', onKey, { signal });
+        };
+
+        images.forEach((image) => {
+          image.addEventListener('click', () => {
+            open(image.currentSrc || image.src, image.alt);
+          }, { signal });
+        });
+      })();
+
+      (() => {
+        const signal = window.__blogPageController.signal;
+        const bar = document.querySelector('[data-reading-progress]');
+        const article = document.querySelector('.article');
+        const toTop = document.querySelector('[data-to-top]');
+        let ticking = false;
+
+        const update = () => {
+          ticking = false;
+          const scrollY = window.scrollY;
+
+          if (bar && article) {
+            const start = article.offsetTop;
+            const total = article.offsetHeight - window.innerHeight;
+            const progress = total > 0 ? (scrollY - start) / total : 0;
+            bar.style.transform = `scaleX(${Math.min(1, Math.max(0, progress))})`;
+          }
+
+          if (toTop) {
+            toTop.classList.toggle('is-visible', scrollY > 600);
+          }
+        };
+
+        const onScroll = () => {
+          if (!ticking) {
+            ticking = true;
+            window.requestAnimationFrame(update);
+          }
+        };
+
+        window.addEventListener('scroll', onScroll, { passive: true, signal });
+        window.addEventListener('resize', onScroll, { passive: true, signal });
+        update();
+
+        toTop?.addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, { signal });
+      })();
+
+      (() => {
+        const signal = window.__blogPageController.signal;
+        const links = [...document.querySelectorAll('.toc a[href^="#"]')];
+
+        if (!links.length) {
+          return;
+        }
+
+        const items = links
+          .map((link) => {
+            const id = decodeURIComponent(link.getAttribute('href').slice(1));
+            return { link, heading: document.getElementById(id) };
+          })
+          .filter((item) => item.heading);
+
+        if (!items.length) {
+          return;
+        }
+
+        let current = null;
+        const setActive = (link) => {
+          if (current === link) {
+            return;
+          }
+          current?.classList.remove('is-active');
+          link.classList.add('is-active');
+          current = link;
+        };
+
+        let ticking = false;
+        const sync = () => {
+          ticking = false;
+          const offset = 130;
+          let active = items[0].link;
+          for (const { link, heading } of items) {
+            if (heading.getBoundingClientRect().top <= offset) {
+              active = link;
+            } else {
+              break;
+            }
+          }
+          // When scrolled to the bottom, the last headings may never pass the
+          // offset threshold (page runs out of scroll). Force the last item active.
+          if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 60) {
+            active = items[items.length - 1].link;
+          }
+          setActive(active);
+        };
+
+        window.addEventListener(
+          'scroll',
+          () => {
+            if (!ticking) {
+              ticking = true;
+              window.requestAnimationFrame(sync);
+            }
+          },
+          { passive: true, signal },
+        );
+        sync();
+      })();
+    </script>
+    <script is:inline>
+      // This site ships no service worker. Sweep out any registration left by
+      // a previous site generation (or another project on this localhost port)
+      // — a stale SW serves outdated CSS/JS and breaks page transitions.
+      (() => {
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((regs) => {
+            if (!regs.length) return;
+            regs.forEach((reg) => reg.unregister());
+            if (window.caches) {
+              caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+            }
+          })
+          .catch(() => {});
+      })();
+    </script>
+    <script is:inline>
+      (() => {
+        const isTyping = (el) =>
+          el &&
+          (el.tagName === 'INPUT' ||
+            el.tagName === 'TEXTAREA' ||
+            el.tagName === 'SELECT' ||
+            el.isContentEditable);
+
+        document.addEventListener('keydown', (event) => {
+          const slash =
+            event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey;
+          const cmdK =
+            (event.metaKey || event.ctrlKey) && (event.key === 'k' || event.key === 'K');
+
+          if (!slash && !cmdK) {
+            return;
+          }
+          if (slash && isTyping(document.activeElement)) {
+            return;
+          }
+
+          event.preventDefault();
+          const input = document.querySelector('#search-input');
+
+          if (input) {
+            input.focus();
+            input.select?.();
+          } else {
+            window.location.href = '/search/';
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

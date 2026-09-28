@@ -1,0 +1,124 @@
+---
+import Icon from '../components/Icon.astro';
+import PostSummary from '../components/PostSummary.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import {
+  getCategories,
+  getCategoryPath,
+  getTagPath,
+  getTags,
+  groupPostsByYear,
+  sortPosts,
+} from '../lib/posts';
+import { getPublishedPosts } from '../lib/posts';
+
+const posts = sortPosts(await getPublishedPosts());
+const categories = getCategories(posts);
+const tags = getTags(posts);
+const years = groupPostsByYear(posts);
+
+// Show the frequently-used tags; collapse the long tail behind a toggle.
+const primaryTags = tags.slice(0, 16);
+const restTags = tags.slice(16);
+---
+
+<BaseLayout
+  title="归档"
+  description="按时间、分类和标签浏览L1angK1NG博客的全部文章。"
+  pageClass="content-page"
+>
+  <section class="archive-page">
+    <header class="page-header">
+      <p class="eyebrow">Archive</p>
+      <h1>文章归档</h1>
+      <p>目前收录 {posts.length} 篇文章，可以按时间、分类或标签浏览。</p>
+    </header>
+
+    <section class="archive-summary" aria-label="内容索引">
+      <div class="taxonomy-panel">
+        <h2><Icon name="layers" size={16} />分类</h2>
+        <div class="term-list">
+          {categories.map((category) => (
+            <a href={getCategoryPath(category.name)}>
+              <span>{category.name}</span>
+              <small>{category.count}</small>
+            </a>
+          ))}
+        </div>
+      </div>
+      <div class="taxonomy-panel">
+        <h2><Icon name="hash" size={16} />标签</h2>
+        <div class="term-list">
+          {primaryTags.map((tag) => (
+            <a href={getTagPath(tag.name)}>
+              <span>{tag.name}</span>
+              <small>{tag.count}</small>
+            </a>
+          ))}
+        </div>
+        {restTags.length > 0 && (
+          <div class="term-more" data-term-more>
+            <div class="term-list term-list--rest">
+              {restTags.map((tag) => (
+                <a href={getTagPath(tag.name)}>
+                  <span>{tag.name}</span>
+                  <small>{tag.count}</small>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {restTags.length > 0 && (
+          <button type="button" class="term-toggle" data-term-toggle aria-expanded="false">
+            <span class="term-toggle__text">展开其余 {restTags.length} 个</span>
+            <svg
+              class="term-toggle__chev"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </section>
+
+    <div class="archive-years">
+      {years.map((group) => (
+        <section class="archive-year">
+          <header class="archive-year__head">
+            <h2 class="archive-year__num">{group.year}</h2>
+            <span class="archive-year__count">{group.posts.length} 篇</span>
+          </header>
+          <div class="post-list">
+            {group.posts.map((post) => <PostSummary post={post} hideYear compact />)}
+          </div>
+        </section>
+      ))}
+    </div>
+  </section>
+
+  <script is:inline data-astro-rerun>
+    (() => {
+      const btn = document.querySelector('[data-term-toggle]');
+      const more = document.querySelector('[data-term-more]');
+      if (!btn || !more) return;
+      const label = btn.querySelector('.term-toggle__text');
+      const rest = more.querySelectorAll('a').length;
+      btn.addEventListener('click', () => {
+        const open = !more.classList.contains('is-open');
+        more.classList.toggle('is-open', open);
+        btn.classList.toggle('is-open', open);
+        btn.setAttribute('aria-expanded', String(open));
+        if (label) label.textContent = open ? '收起标签' : `展开其余 ${rest} 个`;
+      });
+    })();
+  </script>
+</BaseLayout>

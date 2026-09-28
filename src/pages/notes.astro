@@ -1,0 +1,162 @@
+---
+import { render } from 'astro:content';
+import CommentsBox from '../components/CommentsBox.astro';
+import Icon from '../components/Icon.astro';
+import QuoteComment from '../components/QuoteComment.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { formatDate } from '../lib/posts';
+import { getPublishedNotes } from '../lib/posts';
+
+const all = (await getPublishedNotes()).sort(
+  (a, b) => b.data.date.getTime() - a.data.date.getTime(),
+);
+
+// Pre-render each entry's markdown so the body can reuse the rich post styles.
+const entries = await Promise.all(
+  all.map(async (note) => ({ note, Content: (await render(note)).Content })),
+);
+
+// Group by year (entries already sorted newest-first).
+type Entry = (typeof entries)[number];
+const byYear: { year: string; items: Entry[] }[] = [];
+for (const entry of entries) {
+  const year = String(entry.note.data.date.getFullYear());
+  const group = byYear.find((g) => g.year === year);
+  if (group) {
+    group.items.push(entry);
+  } else {
+    byYear.push({ year, items: [entry] });
+  }
+}
+
+// First entry of each month gets an anchor id, for the time index to jump to.
+const monthAnchor = new Map<string, string>();
+const seenMonth = new Set<string>();
+for (const { note } of entries) {
+  const d = note.data.date;
+  const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+  if (!seenMonth.has(key)) {
+    seenMonth.add(key);
+    monthAnchor.set(note.id, `t-${key}`);
+  }
+}
+
+const timeIndex = byYear.map((group) => ({
+  year: group.year,
+  months: group.items
+    .filter((entry) => monthAnchor.has(entry.note.id))
+    .map((entry) => ({
+      label: `${entry.note.data.date.getMonth() + 1}月`,
+      anchor: monthAnchor.get(entry.note.id)!,
+    })),
+}));
+
+// Mood keyword -> designed icon. Accepts Chinese or English.
+const MOOD: Record<string, string> = {
+  晴: 'sun', 晴天: 'sun', sunny: 'sun', clear: 'sun',
+  阴: 'cloud', 阴天: 'cloud', cloudy: 'cloud', overcast: 'cloud',
+  多云: 'cloud', partlycloudy: 'cloud',
+  雨: 'cloud-drizzle', 下雨: 'cloud-drizzle', 小雨: 'cloud-drizzle', rain: 'cloud-drizzle', rainy: 'cloud-drizzle',
+  大雨: 'cloud-rain', 暴雨: 'cloud-rain', storm: 'cloud-rain', heavyrain: 'cloud-rain',
+  雷: 'cloud-lightning', 雷雨: 'cloud-lightning', thunder: 'cloud-lightning',
+  雪: 'cloud-snow', 下雪: 'cloud-snow', snow: 'cloud-snow', snowy: 'cloud-snow',
+  风: 'wind', 大风: 'wind', windy: 'wind', wind: 'wind',
+  雾: 'fog', fog: 'fog', foggy: 'fog',
+  夜: 'moon', 夜晚: 'moon', 晚上: 'moon', night: 'moon',
+  开心: 'smile', 高兴: 'smile', 快乐: 'smile', happy: 'smile',
+  平静: 'meh', 平和: 'meh', 还好: 'meh', calm: 'meh',
+  难过: 'frown', 伤心: 'frown', emo: 'frown', sad: 'frown',
+  累: 'tired', 疲惫: 'tired', 困: 'tired', tired: 'tired',
+  爱: 'heart', 喜欢: 'heart', love: 'heart',
+  思考: 'idea', 想法: 'idea', thinking: 'idea', idea: 'idea',
+};
+const moodIcon = (mood?: string) => {
+  if (!mood) return undefined;
+  const raw = mood.trim();
+  return MOOD[raw] ?? MOOD[raw.toLowerCase().replace(/[\s-]/g, '')];
+};
+---
+
+<BaseLayout
+  title="随笔"
+  description="一些个人思考、日记和零碎感悟 —— 不成文章，随手记下。"
+  pageClass="content-page"
+>
+  <section class="notes-page">
+    <header class="page-header">
+      <p class="eyebrow">Notes</p>
+      <h1>随笔</h1>
+      <p>一些个人思考、日记和零碎的感悟。不成文章，随手记下。</p>
+    </header>
+
+    {entries.length > 0 ? (
+      <div class:list={['notes-layout', byYear.length > 1 && 'notes-layout--indexed']}>
+        <div class="notes-feed">
+        {byYear.map((group) => (
+          <section class="notes-year" id={`y-${group.year}`}>
+            <h2 class="notes-year__label"><span>{group.year}</span></h2>
+            {group.items.map(({ note, Content }) => (
+              <article class="note" id={monthAnchor.get(note.id)}>
+                <div class="note__meta">
+                  <time datetime={note.data.date.toISOString()}>
+                    {formatDate(note.data.date)}
+                  </time>
+                  {note.data.mood && (
+                    moodIcon(note.data.mood) ? (
+                      <span class="note__mood">
+                        <Icon name={moodIcon(note.data.mood)!} size={15} />
+                        <span class="note__mood-text">{note.data.mood}</span>
+                      </span>
+                    ) : (
+                      <span class="note__mood note__mood-text">{note.data.mood}</span>
+                    )
+                  )}
+                </div>
+                <div class="note__main">
+                  {note.data.title && <h3 class="note__title">{note.data.title}</h3>}
+                  <div class="note__body post-content">
+                    <Content />
+                  </div>
+                  {note.data.tags && note.data.tags.length > 0 && (
+                    <div class="tag-list note__tags" aria-label="标签">
+                      {note.data.tags.map((tag) => <span>{tag}</span>)}
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+          </section>
+        ))}
+        </div>
+        {byYear.length > 1 && (
+          <aside class="notes-aside">
+            <nav class="toc" aria-labelledby="notes-time-heading">
+              <h2 id="notes-time-heading">时间</h2>
+              <ol>
+                {timeIndex.map((group) => (
+                  <li class="notes-index__year">
+                    <a href={`#y-${group.year}`}>{group.year}</a>
+                    <div class="notes-index__sub">
+                      <ol class="notes-index__months">
+                        {group.months.map((m) => (
+                          <li class="toc__item--depth-3">
+                            <a href={`#${m.anchor}`}>{m.label}</a>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          </aside>
+        )}
+      </div>
+    ) : (
+      <p class="notes-empty">还没有随笔，过些日子再来看看。</p>
+    )}
+
+    <CommentsBox title="留言" />
+  </section>
+  <QuoteComment selector=".note__body" />
+</BaseLayout>

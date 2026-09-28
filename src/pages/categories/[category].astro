@@ -1,0 +1,61 @@
+---
+import Icon from '../../components/Icon.astro';
+import PostSummary from '../../components/PostSummary.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import {
+  getCategories,
+  getCategoryPath,
+  getPostsByCategory,
+  sortPosts,
+} from '../../lib/posts';
+import { getPublishedPosts } from '../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = sortPosts(await getPublishedPosts());
+
+  return getCategories(posts).map((category) => ({
+    params: { category: category.name },
+    props: {
+      category: category.name,
+      posts: getPostsByCategory(posts, category.name),
+      categories: getCategories(posts),
+    },
+  }));
+}
+
+const { category, posts, categories } = Astro.props;
+---
+
+<BaseLayout
+  title={`分类：${category}`}
+  description={`浏览“${category}”分类下的全部文章。`}
+  pageClass="content-page"
+>
+  <section class="archive-page">
+    <a class="back-link" href="/archive/">
+      <Icon name="arrow-right" size={16} class="back-link__arrow" />
+      返回归档
+    </a>
+    <header class="page-header">
+      <p class="eyebrow">Category</p>
+      <h1>{category}</h1>
+      <p>这个分类下共有 {posts.length} 篇文章。</p>
+    </header>
+
+    <nav class="term-switcher" aria-label="全部分类">
+      {categories.map((item) => (
+        <a
+          href={getCategoryPath(item.name)}
+          class:list={[item.name === category && 'is-current']}
+        >
+          <span>{item.name}</span>
+          <small>{item.count}</small>
+        </a>
+      ))}
+    </nav>
+
+    <div class="post-list">
+      {posts.map((post) => <PostSummary post={post} compact />)}
+    </div>
+  </section>
+</BaseLayout>

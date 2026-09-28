@@ -1,0 +1,61 @@
+---
+import Icon from '../../components/Icon.astro';
+import PostSummary from '../../components/PostSummary.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import {
+  getPostsByTag,
+  getTagPath,
+  getTags,
+  sortPosts,
+} from '../../lib/posts';
+import { getPublishedPosts } from '../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = sortPosts(await getPublishedPosts());
+
+  return getTags(posts).map((tag) => ({
+    params: { tag: tag.name },
+    props: {
+      tag: tag.name,
+      posts: getPostsByTag(posts, tag.name),
+      tags: getTags(posts),
+    },
+  }));
+}
+
+const { tag, posts, tags } = Astro.props;
+---
+
+<BaseLayout
+  title={`标签：${tag}`}
+  description={`浏览带有“${tag}”标签的全部文章。`}
+  pageClass="content-page"
+>
+  <section class="archive-page">
+    <a class="back-link" href="/archive/">
+      <Icon name="arrow-right" size={16} class="back-link__arrow" />
+      返回归档
+    </a>
+    <header class="page-header">
+      <p class="eyebrow">Tag</p>
+      <h1>{tag}</h1>
+      <p>这个标签下共有 {posts.length} 篇文章。</p>
+    </header>
+
+    <nav class="term-switcher" aria-label="全部标签">
+      {tags.map((item) => (
+        <a
+          href={getTagPath(item.name)}
+          class:list={[item.name === tag && 'is-current']}
+        >
+          <span>{item.name}</span>
+          <small>{item.count}</small>
+        </a>
+      ))}
+    </nav>
+
+    <div class="post-list">
+      {posts.map((post) => <PostSummary post={post} compact />)}
+    </div>
+  </section>
+</BaseLayout>

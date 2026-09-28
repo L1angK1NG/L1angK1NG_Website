@@ -1,0 +1,204 @@
+---
+import { render } from 'astro:content';
+import CommentsBox from '../../components/CommentsBox.astro';
+import Icon from '../../components/Icon.astro';
+import QuoteComment from '../../components/QuoteComment.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import {
+  absoluteUrl,
+  formatDate,
+  getAdjacentPosts,
+  getPostCategory,
+  getPostCover,
+  getPostDescription,
+  getPostPath,
+  getPostTags,
+  getPostUpdatedDate,
+  getReadingMinutes,
+  getRelatedPosts,
+  site,
+  sortPosts,
+} from '../../lib/posts';
+import { getPublishedPosts } from '../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = sortPosts(await getPublishedPosts());
+
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const posts = sortPosts(await getPublishedPosts());
+const { Content, headings } = await render(post);
+const category = getPostCategory(post);
+const tags = getPostTags(post);
+const description = getPostDescription(post);
+const cover = getPostCover(post);
+const readingMinutes = getReadingMinutes(post);
+const { newer, older } = getAdjacentPosts(posts, post);
+const relatedPosts = getRelatedPosts(posts, post);
+const tableOfContents = headings.filter((heading) => heading.depth >= 2 && heading.depth <= 3);
+
+// Group h3s under their parent h2 so the sidebar can reveal a section's
+// children only while reading that section (same pattern as the notes index).
+type TocGroup = { slug: string; text: string; children: { slug: string; text: string }[] };
+const tocGroups: TocGroup[] = [];
+for (const heading of tableOfContents) {
+  if (heading.depth === 2 || tocGroups.length === 0) {
+    tocGroups.push({ slug: heading.slug, text: heading.text, children: [] });
+  } else {
+    tocGroups[tocGroups.length - 1].children.push({ slug: heading.slug, text: heading.text });
+  }
+}
+
+const updatedDate = getPostUpdatedDate(post);
+const articleSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'BlogPosting',
+  headline: post.data.title,
+  description,
+  inLanguage: 'zh-CN',
+  url: absoluteUrl(getPostPath(post)),
+  mainEntityOfPage: absoluteUrl(getPostPath(post)),
+  ...(post.data.date ? { datePublished: post.data.date.toISOString() } : {}),
+  ...(updatedDate ? { dateModified: updatedDate.toISOString() } : {}),
+  author: { '@type': 'Person', name: post.data.author ?? site.author, url: site.url },
+  publisher: { '@type': 'Person', name: site.author, url: site.url },
+  ...(cover ? { image: cover } : {}),
+  ...(tags.length > 0 ? { keywords: tags.join(', ') } : {}),
+};
+---
+
+<BaseLayout
+  title={post.data.title}
+  description={description}
+  pageClass="article-page"
+  image={cover}
+  type="article"
+  jsonLd={articleSchema}
+>
+  <article class:list={['article', tableOfContents.length >= 2 && 'article--toc']}>
+    <a class="back-link" href="/">
+      <Icon name="arrow-right" size={16} class="back-link__arrow" />
+      返回首页
+    </a>
+
+    <header class="article__header">
+      <div class="post-meta">
+        {category && <span>{category}</span>}
+        {post.data.date && (
+          <time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time>
+        )}
+        {post.data.updated && (
+          <span>更新于 {formatDate(post.data.updated)}</span>
+        )}
+        <span>{readingMinutes} 分钟阅读</span>
+      </div>
+      <h1>{post.data.title}</h1>
+      <p>{description}</p>
+      {tags.length > 0 && (
+        <div class="tag-list" aria-label="标签">
+          {tags.map((tag) => <span>{tag}</span>)}
+        </div>
+      )}
+      {/* Cover stays in header only when there's no TOC sidebar */}
+      {cover && tableOfContents.length < 2 && (
+        <img
+          class="article__cover"
+          src={cover}
+          alt=""
+          loading="eager"
+          fetchpriority="high"
+          referrerpolicy="no-referrer"
+          onerror="this.onerror=null;this.src='/covers/default-cover.svg'"
+        />
+      )}
+    </header>
+
+    <div class="article__body">
+      <div class="article__main">
+        {/* When a TOC sidebar exists, cover moves here so it sits beside the TOC */}
+        {cover && tableOfContents.length >= 2 && (
+          <img
+            class="article__cover"
+            src={cover}
+            alt=""
+            loading="eager"
+            fetchpriority="high"
+            referrerpolicy="no-referrer"
+            onerror="this.onerror=null;this.src='/covers/default-cover.svg'"
+          />
+        )}
+        <div class="post-content">
+          <Content />
+        </div>
+
+        <footer class="article__footer">
+          {(newer || older) && (
+            <nav class="post-nav" aria-label="相邻文章">
+              {older && (
+                <a class="post-nav__prev" href={getPostPath(older)}>
+                  <span>上一篇</span>
+                  <strong>{older.data.title}</strong>
+                </a>
+              )}
+              {newer && (
+                <a class="post-nav__next" href={getPostPath(newer)}>
+                  <span>下一篇</span>
+                  <strong>{newer.data.title}</strong>
+                </a>
+              )}
+            </nav>
+          )}
+
+          {relatedPosts.length > 0 && (
+            <section class="related-posts" aria-labelledby="related-heading">
+              <h2 id="related-heading">相关文章</h2>
+              <div class="related-posts__grid">
+                {relatedPosts.map((relatedPost) => (
+                  <a href={getPostPath(relatedPost)}>
+                    <span>{getPostCategory(relatedPost) ?? '文章'}</span>
+                    <strong>{relatedPost.data.title}</strong>
+                    <small>{getPostDescription(relatedPost)}</small>
+                  </a>
+                ))}
+              </div>
+            </section>
+          )}
+        </footer>
+      </div>
+
+      {tableOfContents.length >= 2 && (
+        <aside class="article__aside">
+          <nav class="toc" aria-labelledby="toc-heading">
+            <h2 id="toc-heading">目录</h2>
+            <ol>
+              {tocGroups.map((group) => (
+                <li class="toc__group toc__item--depth-2">
+                  <a href={`#${group.slug}`}>{group.text}</a>
+                  {group.children.length > 0 && (
+                    <div class="toc__sub">
+                      <ol class="toc__children">
+                        {group.children.map((child) => (
+                          <li class="toc__item--depth-3">
+                            <a href={`#${child.slug}`}>{child.text}</a>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </nav>
+        </aside>
+      )}
+    </div>
+
+    <QuoteComment />
+    <CommentsBox />
+  </article>
+</BaseLayout>

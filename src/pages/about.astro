@@ -1,0 +1,224 @@
+---
+import Icon from '../components/Icon.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { sortPosts } from '../lib/posts';
+import { getPublishedPosts } from '../lib/posts';
+
+const posts = sortPosts(await getPublishedPosts());
+const postCount = posts.length;
+const firstYear = posts.reduce((min, post) => {
+  const year = post.data.date?.getFullYear();
+  return year && year < min ? year : min;
+}, new Date().getFullYear());
+
+// ---- 开源项目：构建时从 GitHub API 自动同步 ----
+// 优先请求实时数据（5 秒超时）；API 不可达时回退到本地缓存
+// src/data/github-projects.json（用以下命令刷新缓存：
+// curl -s "https://api.github.com/users/<你的用户名>/repos?per_page=100" -o src/data/github-projects.json）
+interface GhRepo {
+  name: string;
+  description: string | null;
+  html_url: string;
+  stargazers_count: number;
+  language: string | null;
+  topics: string[];
+  fork: boolean;
+}
+
+import cachedRepos from '../data/github-projects.json';
+import siteConfig from '../data/site.config.json';
+import starFillIcon from '@phosphor-icons/core/assets/fill/star-fill.svg?raw';
+
+const GITHUB_USER = siteConfig.githubUser;
+
+// 项目名 → 博客文章链接（site.config.json 的 projectOverrides.article）；
+// 没有对应文章的项目不显示「笔记」按钮。
+const articleByRepo: Record<string, string> = Object.fromEntries(
+  Object.entries(siteConfig.projectOverrides)
+    .filter(([, v]) => v.article)
+    .map(([name, v]) => [name, v.article as string]),
+);
+
+// 项目名 → 卡片图标（site.config.json 的 projectOverrides.icon，默认 github 标记）
+const iconByRepo: Record<string, string> = Object.fromEntries(
+  Object.entries(siteConfig.projectOverrides)
+    .filter(([, v]) => v.icon)
+    .map(([name, v]) => [name, v.icon as string]),
+);
+
+const fetchGithubRepos = async (): Promise<GhRepo[]> => {
+  // 未配置 githubUser 时不请求 GitHub，直接返回缓存（可能为空）。
+  if (!GITHUB_USER) return cachedRepos as GhRepo[];
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(
+      `https://api.github.com/users/${GITHUB_USER}/repos?per_page=100&sort=pushed&type=source`,
+      {
+        headers: {
+          'User-Agent': 'L1angK1NG-Website/astro',
+          Accept: 'application/vnd.github+json',
+        },
+        signal: controller.signal,
+      },
+    );
+    clearTimeout(timer);
+    if (!res.ok) return cachedRepos as GhRepo[];
+    const repos = (await res.json()) as GhRepo[];
+    return repos.length ? repos : (cachedRepos as GhRepo[]);
+  } catch {
+    return cachedRepos as GhRepo[];
+  }
+};
+
+const githubRepos = (await fetchGithubRepos())
+  .filter((repo) => !repo.fork)
+  .sort((a, b) => b.stargazers_count - a.stargazers_count);
+
+const openSourceItems = githubRepos.map((repo) => ({
+  title: repo.name,
+  owner: GITHUB_USER,
+  description: repo.description ?? '开源项目。',
+  icon: iconByRepo[repo.name] ?? 'github',
+  href: repo.html_url,
+  articleHref: articleByRepo[repo.name],
+  stars: repo.stargazers_count,
+  tags: repo.topics?.length ? repo.topics.slice(0, 4) : [repo.language ?? 'GitHub'],
+}));
+
+// 静态项目组（资源下载等）来自 site.config.json 的 projectGroups；
+// 静态项同样支持 article 字段（对应「笔记」链接）与 icon 字段。
+const projectGroups = [
+  {
+    title: '开源项目',
+    description: '自己写的一些开源项目，构建时从 GitHub 自动同步，欢迎 Star 和提建议。',
+    items: openSourceItems,
+  },
+  ...siteConfig.projectGroups.map((group) => ({
+    ...group,
+    items: group.items.map((item) => ({
+      ...item,
+      articleHref: (item as { article?: string }).article,
+      stars: 0,
+    })),
+  })),
+];
+---
+
+<BaseLayout
+  title="关于"
+  description="关于L1angK1NG，以及这个完全由 AI 开发的博客会持续记录的内容。"
+  pageClass="content-page"
+>
+  <article class="about">
+    <header class="about__intro">
+      <img
+        src="/avatars/avatar.jpg"
+        alt="L1angK1NG头像"
+        class="about__avatar"
+        width="72"
+        height="72"
+      />
+      <p class="eyebrow">About</p>
+      <h1 class="about__lead">
+        比起追新，我更在意一个工具<em>到底好不好用</em>。
+      </h1>
+      <p class="about__sub">
+        这里大多是亲手用过、踩过坑之后的实践笔记 —— 偏实用，也保留个人判断。
+      </p>
+      <p class="about__sub">
+        而这个网站本身，从设计到每一行代码，<em>全部由 AI 开发完成</em> —— 也算是对「到底好不好用」的一份现场答卷。
+      </p>
+
+      <div class="about__facts" aria-label="站点速览">
+        <span class="about__fact">{postCount} 篇文章</span>
+        <span class="about__fact">写于 {firstYear} 至今</span>
+        <span class="about__fact">全站由 AI 开发</span>
+        <span class="about__social" aria-label="找到我">
+          <a
+            class="icon-button"
+            href="https://space.bilibili.com/46377861"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Bilibili"
+          >
+            <Icon name="bilibili" />
+          </a>
+          <a
+            class="icon-button"
+            href="https://www.youtube.com/channel/UCUuwwXFGK8Z3OBrq6PzkmUg"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="YouTube"
+          >
+            <Icon name="youtube" />
+          </a>
+          <a
+            class="icon-button"
+            href="https://x.com/shenfanlaogou"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="X"
+          >
+            <Icon name="x-platform" />
+          </a>
+          <a class="icon-button" href="/rss.xml" aria-label="RSS 订阅">
+            <Icon name="rss" />
+          </a>
+        </span>
+      </div>
+    </header>
+
+    {projectGroups.map((section) =>
+      section.items.length > 0 ? (
+        <section class="proj-section" aria-labelledby={`${section.title}-heading`}>
+          <div class="proj-section__head">
+            <h2 class="proj-section__label" id={`${section.title}-heading`}>{section.title}</h2>
+            <p class="proj-section__desc">{section.description}</p>
+          </div>
+
+          <div class="proj-grid">
+            {section.items.map((item) => (
+              <article class="proj">
+                <span class="proj__icon"><Icon name={item.icon} size={18} /></span>
+                <div class="proj__body">
+                  <span class="proj__owner">
+                    {item.owner}
+                    {item.stars > 0 && (
+                      <span class="proj__stars">
+                        <span class="proj__stars-icon" aria-hidden="true" set:html={starFillIcon}></span>
+                        {item.stars}
+                      </span>
+                    )}
+                  </span>
+                  <h3 class="proj__title">
+                    <a
+                      href={item.href}
+                      target={item.href.startsWith('http') ? '_blank' : undefined}
+                      rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                    >
+                      {item.title}
+                      <Icon name="arrow-up-right" size={16} class="proj__go" />
+                    </a>
+                  </h3>
+                  <p class="proj__desc">{item.description}</p>
+                  <div class="proj__foot">
+                    <span class="proj__tags">
+                      {item.tags.map((tag) => <small>{tag}</small>)}
+                    </span>
+                    {item.articleHref && (
+                      <a class="proj__note" href={item.articleHref}>
+                        笔记
+                        <Icon name="arrow-right" size={13} />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null
+    )}
+  </article>
+</BaseLayout>

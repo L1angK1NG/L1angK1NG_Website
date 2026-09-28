@@ -1,0 +1,74 @@
+---
+import Icon from './Icon.astro';
+import { site } from '../lib/posts';
+
+const year = new Date().getFullYear();
+
+const channels = [
+  { name: 'Bilibili', icon: 'bilibili', href: 'https://space.bilibili.com/46377861' },
+  { name: 'YouTube', icon: 'youtube', href: 'https://www.youtube.com/channel/UCUuwwXFGK8Z3OBrq6PzkmUg' },
+  { name: 'RSS', icon: 'rss', href: '/rss.xml' },
+];
+
+const groups = [
+  { name: 'QQ 交流群', icon: 'qq', href: '' },
+  { name: '微信交流群', icon: 'wechat', href: '' },
+];
+---
+
+<footer class="site-footer">
+  <div class="site-footer__inner">
+    <div class="site-footer__id">
+      <img
+        src="/avatars/avatar.jpg"
+        alt={site.author}
+        class="site-footer__avatar"
+        width="40"
+        height="40"
+      />
+      <div class="site-footer__id-text">
+        <strong>{site.author}</strong>
+        <span>AI · Code · Web</span>
+      </div>
+    </div>
+
+    <nav class="site-footer__links" aria-label="页脚链接">
+      {channels.map(({ name, icon, href }) => (
+        <a
+          href={href}
+          target={href.startsWith('http') ? '_blank' : undefined}
+          rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
+        >
+          <Icon name={icon} size={15} />
+          {name}
+        </a>
+      ))}
+      <span class="site-footer__sep" aria-hidden="true"></span>
+      {groups.map(({ name, icon, href }) => (
+        href ? (
+          <a
+            href={href}
+            target={href.startsWith('http') ? '_blank' : undefined}
+            rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
+          >
+            <Icon name={icon} size={15} />
+            {name}
+          </a>
+        ) : (
+          <span class="site-footer__item">
+            <Icon name={icon} size={15} />
+            {name}
+          </span>
+        )
+      ))}
+    </nav>
+  </div>
+
+  <div class="site-footer__bar">
+    <span>© {year} {site.author}</span>
+    <span aria-hidden="true">·</span>
+    <a href={site.url}>{site.url.replace('https://', '')}</a>
+    <span aria-hidden="true">·</span>
+    <span>由 <a href="https://astro.build" target="_blank" rel="noopener noreferrer">Astro</a> 构建</span>
+  </div>
+</footer>

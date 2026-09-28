@@ -1,0 +1,226 @@
+---
+import Icon from './Icon.astro';
+import siteConfig from '../data/site.config.json';
+
+// Trailing slashes matter: hosts 301 `/archive` → `/archive/`, and a redirect
+// makes the browser skip the cross-document view transition.
+const pathname = Astro.url.pathname.endsWith('/')
+  ? Astro.url.pathname
+  : `${Astro.url.pathname}/`;
+const isCurrent = (href: string) =>
+  href === '/' ? pathname === '/' : pathname.startsWith(href);
+---
+
+<header
+  class="site-nav"
+  transition:persist="site-nav"
+  transition:animate="none"
+>
+  <nav class="site-nav__pill" aria-label="主导航">
+    <span class="site-nav__indicator" aria-hidden="true"></span>
+    <a href="/" class:list={[isCurrent('/') && 'is-current']} data-nav-route>首页</a>
+    <a href="/notes/" class:list={[isCurrent('/notes/') && 'is-current']} data-nav-route>随笔</a>
+    <a href="/archive/" class:list={[isCurrent('/archive/') && 'is-current']} data-nav-route>归档</a>
+    <a href="/about/" class:list={[isCurrent('/about/') && 'is-current']} data-nav-route>关于</a>
+    <span class="site-nav__sep" aria-hidden="true"></span>
+    {siteConfig.githubRepo && (
+      <a
+        href={siteConfig.githubRepo}
+        class="site-nav__icon"
+        aria-label="GitHub 仓库"
+        title="GitHub 仓库"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        <Icon name="github" size={18} />
+      </a>
+    )}
+    <a
+      href="/search/"
+      class:list={['site-nav__icon', isCurrent('/search/') && 'is-current']}
+      aria-label="搜索"
+      aria-keyshortcuts="/ Meta+K"
+      title="搜索（/ 或 ⌘K）"
+    >
+      <Icon name="search" size={18} />
+    </a>
+    <button type="button" class="theme-toggle site-nav__icon" data-theme-toggle aria-label="切换深色模式">
+      <Icon name="moon" size={18} class="theme-toggle__moon" />
+      <Icon name="sun" size={18} class="theme-toggle__sun" />
+    </button>
+  </nav>
+</header>
+
+<script>
+  type IndicatorState = { x: number; y: number; width: number; height: number };
+  type NavMotionState = {
+    pendingPath: string;
+    indicator: IndicatorState | null;
+    animation: Animation | null;
+    initialized: boolean;
+  };
+
+  const navMotion = (window as Window & { __blogNavMotion?: NavMotionState }).__blogNavMotion ??= {
+    pendingPath: '',
+    indicator: null,
+    animation: null,
+    initialized: false,
+  };
+
+  const normalizePath = (value: string) => {
+    const path = value.endsWith('/') ? value : `${value}/`;
+    return path === '//' ? '/' : path;
+  };
+
+  const readIndicatorState = (indicator: HTMLElement, pill: HTMLElement): IndicatorState => {
+    const rect = indicator.getBoundingClientRect();
+    const pillRect = pill.getBoundingClientRect();
+    return {
+      x: rect.left - pillRect.left,
+      y: rect.top - pillRect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  };
+
+  // Keep the vertical centering in a separate 2D transform. Some Chromium
+  // builds reject percentage values in translate3d(), leaving the chip below
+  // the pill when only top: 50% is applied.
+  const transformFor = ({ x }: IndicatorState) => `translateX(${x}px) translateY(-50%)`;
+
+  const stopIndicatorAnimation = () => {
+    const animation = navMotion.animation;
+    if (!animation) return;
+    animation.cancel();
+    navMotion.animation = null;
+  };
+
+  const positionNavIndicator = (animate = true) => {
+    const pill = document.querySelector<HTMLElement>('.site-nav__pill');
+    const indicator = pill?.querySelector<HTMLElement>('.site-nav__indicator');
+    const active = pill?.querySelector<HTMLElement>('a[data-nav-route].is-current');
+    if (!pill || !indicator || !active) {
+      pill?.classList.remove('has-indicator');
+      return;
+    }
+
+    const pillRect = pill.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const target: IndicatorState = {
+      x: activeRect.left - pillRect.left,
+      // Vertical placement is owned by CSS (top: 50% + translateY(-50%)).
+      // JS only tracks the horizontal destination and the measured size.
+      y: 0,
+      width: activeRect.width,
+      height: activeRect.height,
+    };
+
+    let current = navMotion.indicator ?? target;
+    if (navMotion.animation) {
+      current = readIndicatorState(indicator, pill);
+      stopIndicatorAnimation();
+    }
+
+    if (!animate || typeof indicator.animate !== 'function') {
+      pill.classList.remove('is-indicator-ready');
+      indicator.style.width = `${target.width}px`;
+      indicator.style.height = `${target.height}px`;
+      indicator.style.transform = transformFor(target);
+      navMotion.indicator = target;
+      pill.classList.add('has-indicator');
+      window.requestAnimationFrame(() => pill.classList.add('is-indicator-ready'));
+      return;
+    }
+
+    indicator.style.width = `${target.width}px`;
+    indicator.style.height = `${target.height}px`;
+    indicator.style.transform = transformFor(target);
+    pill.classList.add('has-indicator');
+
+    const animation = indicator.animate(
+      [
+        {
+          width: `${current.width}px`,
+          height: `${current.height}px`,
+          transform: transformFor(current),
+        },
+        {
+          width: `${target.width}px`,
+          height: `${target.height}px`,
+          transform: transformFor(target),
+        },
+      ],
+      {
+        duration: 420,
+        easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        fill: 'both',
+      },
+    );
+    navMotion.animation = animation;
+    navMotion.indicator = target;
+    animation.onfinish = () => {
+      if (navMotion.animation !== animation) return;
+      try {
+        animation.commitStyles?.();
+      } catch {
+      }
+      animation.cancel();
+      navMotion.animation = null;
+    };
+  };
+
+  const syncCurrentNavItem = (animate = false) => {
+    const pathname = normalizePath(window.location.pathname);
+    document.querySelectorAll<HTMLAnchorElement>('.site-nav a[href]').forEach((link) => {
+      const href = normalizePath(new URL(link.href, window.location.href).pathname);
+      const current = href === '/' ? pathname === '/' : pathname.startsWith(href);
+      link.classList.remove('is-pending');
+      link.classList.toggle('is-current', current);
+      if (current) link.setAttribute('aria-current', 'page');
+      else link.removeAttribute('aria-current');
+    });
+    // The indicator is already travelling to the clicked item while Astro
+    // fetches and swaps the next page. Re-measuring it at this point would
+    // write the destination twice and make the motion look like a flash.
+    if (navMotion.pendingPath === pathname) {
+      navMotion.pendingPath = '';
+      return;
+    }
+    positionNavIndicator(animate);
+  };
+
+  const showPendingNavItem = (event: MouseEvent) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest<HTMLAnchorElement>('.site-nav a[data-nav-route]');
+    if (!link) return;
+
+    const targetPath = normalizePath(new URL(link.href, window.location.href).pathname);
+    if (targetPath === normalizePath(window.location.pathname)) return;
+
+    navMotion.pendingPath = targetPath;
+
+    document.querySelectorAll<HTMLAnchorElement>('.site-nav a[data-nav-route]').forEach((item) => {
+      item.classList.toggle('is-pending', item === link);
+      item.classList.toggle('is-current', item === link);
+    });
+    positionNavIndicator(true);
+  };
+
+  if (!navMotion.initialized) {
+    syncCurrentNavItem();
+    // Start the indicator on the physical press, before Astro begins fetching
+    // the destination. Keyboard activation still reaches the click fallback.
+    document.addEventListener('pointerdown', showPendingNavItem);
+    document.addEventListener('click', (event) => {
+      if (event.detail === 0) showPendingNavItem(event);
+    });
+    document.addEventListener('astro:after-swap', () => syncCurrentNavItem(true));
+    window.addEventListener('resize', () => positionNavIndicator(false), { passive: true });
+    navMotion.initialized = true;
+  }
+</script>
