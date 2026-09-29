@@ -1,0 +1,239 @@
+---
+// 二次元像素宠物光标（Pet Cursor）：进入页面后隐藏系统光标，改为两层跟随：
+//   - 金色四角星指针：即时贴合指针位置（保证精确指向），自带闪烁动画
+//   - 云朵上的像素小生物：惯性滞后平滑追随（光滑移动），移动时朝方向倾斜，
+//     悬停可交互元素时歪头杀，按下时蹲下反馈，悬停时整体轻微浮动
+// 仅在支持鼠标的设备启用；文本输入框保留系统文本光标；
+// prefers-reduced-motion 时宠物直接贴合、关闭闪烁与浮动。元素带 transition:persist，
+// View Transitions 换页时保持同一 DOM 节点。
+---
+
+<div id="pet-cursor" aria-hidden="true" transition:persist="pet-cursor">
+  <div id="pc-star-pos"><div class="pc-star"></div></div>
+  <div id="pc-pet-pos">
+    <div class="pc-pet-bob">
+      <div class="pc-pet-face">
+        <img src="/pet/pet.png" alt="" width="60" />
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  /* 脚本就绪后才隐藏系统光标（JS 加类），脚本不可用时浏览器保持默认光标 */
+  :global(html.pc-on),
+  :global(html.pc-on a),
+  :global(html.pc-on button),
+  :global(html.pc-on label),
+  :global(html.pc-on summary),
+  :global(html.pc-on select),
+  :global(html.pc-on [role='button']),
+  :global(html.pc-on [role='link']) {
+    cursor: none;
+  }
+  /* 文本输入场景必须保留系统文本光标，否则无法看到插入点位置 */
+  :global(html.pc-on input:is(:not([type='button']):not([type='submit']):not([type='checkbox']):not([type='radio']))),
+  :global(html.pc-on textarea),
+  :global(html.pc-on [contenteditable]) {
+    cursor: text;
+  }
+
+  #pet-cursor {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2147483000;
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+  }
+  #pet-cursor.pc-visible {
+    opacity: 1;
+  }
+
+  /* 外层每帧只写 transform（translate3d/rotate），缩放类动画放内层，互不覆盖 */
+  #pc-star-pos,
+  #pc-pet-pos {
+    position: fixed;
+    left: 0;
+    top: 0;
+    will-change: transform;
+  }
+
+  /* —— 星星指针：金色四角星 + 闪烁 —— */
+  .pc-star {
+    width: 14px;
+    height: 14px;
+    margin: -7px 0 0 -7px;
+    background: #ffc94a;
+    clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
+    filter: drop-shadow(0 1px 2px rgba(180, 100, 60, 0.45));
+    transition: transform 0.18s ease-out;
+    animation: pc-twinkle 1.6s ease-in-out infinite;
+  }
+
+  /* —— 云朵宠物 —— */
+  .pc-pet-bob {
+    animation: pc-bob 2.4s ease-in-out infinite;
+    will-change: transform;
+  }
+  .pc-pet-face {
+    transform: translate(-30px, -52px);
+    transition: transform 0.22s ease-out;
+  }
+  .pc-pet-face img {
+    display: block;
+    width: 60px;
+    image-rendering: pixelated;
+    /* 云底微阴影让宠物与页面内容分层 */
+    filter: drop-shadow(0 4px 6px rgba(60, 80, 140, 0.18));
+  }
+
+  /* 悬停可交互元素：星星放大、宠物歪头卖萌 */
+  :global(#pet-cursor.pc-hover) .pc-star {
+    transform: scale(1.5);
+  }
+  :global(#pet-cursor.pc-hover) .pc-pet-face {
+    transform: translate(-30px, -52px) rotate(11deg);
+  }
+  /* 按下反馈：星星缩小、宠物蹲一下 */
+  :global(#pet-cursor.pc-press) .pc-star {
+    transform: scale(0.75);
+  }
+  :global(#pet-cursor.pc-press) .pc-pet-face {
+    transform: translate(-30px, -48px) scale(0.92);
+  }
+
+  @keyframes pc-twinkle {
+    0%,
+    100% {
+      opacity: 0.9;
+      transform: scale(1) rotate(0deg);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.22) rotate(12deg);
+    }
+  }
+
+  /* 云朵悬浮：轻微上下浮动 */
+  @keyframes pc-bob {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-5px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pc-star,
+    .pc-pet-bob {
+      animation: none;
+    }
+    .pc-star,
+    .pc-pet-face {
+      transition: none;
+    }
+    :global(#pet-cursor.pc-hover) .pc-star {
+      transform: scale(1.25);
+    }
+    :global(#pet-cursor.pc-hover) .pc-pet-face {
+      transform: translate(-30px, -52px);
+    }
+    :global(#pet-cursor.pc-press) .pc-pet-face {
+      transform: translate(-30px, -50px);
+    }
+  }
+</style>
+
+<script>
+  // 单个 rAF 循环驱动全部状态；transition:persist 保证换页后元素仍在，
+  // 事件全部委托到 window/document，无需在 astro:page-load 时重绑。
+  const finePointer = window.matchMedia('(pointer: fine)');
+
+  function initPetCursor() {
+    const root = document.getElementById('pet-cursor');
+    if (!root || finePointer.matches === false) return;
+    // ClientRouter 换页会重置 <html> 的 class，每次 init 都重新盖上（幂等）
+    document.documentElement.classList.add('pc-on');
+    if (root.dataset.bound === '1') return;
+    root.dataset.bound = '1';
+
+    const starPos = document.getElementById('pc-star-pos');
+    const petPos = document.getElementById('pc-pet-pos');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    // 目标位置 = 真实指针；宠物用惯性追随目标，形成「小家伙追着你跑」的层次
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight / 2;
+    let petX = targetX;
+    let petY = targetY;
+    let tilt = 0;
+    let lastTime = performance.now();
+
+    const show = () => root.classList.add('pc-visible');
+    const hide = () => root.classList.remove('pc-visible');
+
+    // 悬停判定走事件委托；input/textarea 除外（那里保留系统文本光标）
+    const HOVERABLE = 'a, button, label, summary, select, [role="button"], [role="link"]';
+
+    window.addEventListener('mousemove', (e) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+      show();
+      const t = e.target;
+      root.classList.toggle(
+        'pc-hover',
+        t instanceof Element && t.closest(HOVERABLE) !== null,
+      );
+    }, { passive: true });
+
+    window.addEventListener('mousedown', () => root.classList.add('pc-press'));
+    window.addEventListener('mouseup', () => root.classList.remove('pc-press'));
+    document.documentElement.addEventListener('mouseenter', show);
+    document.documentElement.addEventListener('mouseleave', hide);
+
+    function tick(now) {
+      const dt = Math.min(64, now - lastTime) || 16;
+      lastTime = now;
+
+      // 星星始终即时贴合，保证指向精度
+      starPos.style.transform = `translate3d(${targetX}px, ${targetY}px, 0)`;
+
+      if (reduced.matches) {
+        // 降级：宠物直接贴合，无惯性、无倾斜
+        petX = targetX;
+        petY = targetY;
+        tilt = 0;
+      } else {
+        // 惯性追随：指数平滑、帧率无关；比星星慢一拍，形成追赶的可爱感
+        const k = 1 - Math.pow(0.0022, dt / 1000);
+        const nextX = petX + (targetX - petX) * k;
+        const nextY = petY + (targetY - petY) * k;
+        const vx = nextX - petX;
+        petX = nextX;
+        petY = nextY;
+
+        // 移动方向感：横向速度转化为倾斜角，指数回正（像被风吹着跑）
+        const targetTilt = Math.max(-13, Math.min(13, vx * 1.1));
+        tilt += (targetTilt - tilt) * Math.min(1, dt / 110);
+      }
+
+      petPos.style.transform = `translate3d(${petX}px, ${petY}px, 0) rotate(${tilt.toFixed(2)}deg)`;
+
+      requestAnimationFrame(tick);
+    }
+
+    // 防止换页脚本重跑时叠加多个循环
+    if (!window.__pcLoop) {
+      window.__pcLoop = true;
+      requestAnimationFrame(tick);
+    }
+
+    show();
+  }
+
+  initPetCursor();
+  document.addEventListener('astro:page-load', initPetCursor);
+</script>
