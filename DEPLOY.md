@@ -60,6 +60,12 @@ npm run admin        # http://localhost:4000/admin
 
 > 说明：正文里可直接用博客原有的 `{% %}` 短代码，后台预览会尽量还原；最终效果以构建结果为准。
 
+> **内容与媒体不进 git 仓库**：`src/content/`（文章与随笔）和 `public/uploads/`（上传图片）属于个人数据，已被 `.gitignore` 排除，不会提交到 GitHub。因此在换服务器或重新克隆仓库后，这些目录会是空的——需要把旧服务器上的这两个目录拷贝过去，或定期备份：
+>
+> ```bash
+> tar -czf blog-content-$(date +%F).tar.gz src/content public/uploads
+> ```
+
 ---
 
 ## 四、服务器部署

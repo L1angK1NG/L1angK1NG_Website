@@ -21,6 +21,11 @@ dist-*/
 .content-build-manifest.json
 *.log
 
+# 个人博客数据：内容与媒体不进仓库（详见 DEPLOY.md「内容与媒体备份」）
+src/content/
+public/uploads/
+profile.jpg
+
 # Logs and OS caches
 npm-debug.log*
 yarn-debug.log*
