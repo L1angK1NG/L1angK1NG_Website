@@ -17,7 +17,7 @@
     }, 3200);
   }
 
-  async function api(path, { method = 'GET', body, raw } = {}) {
+  async function api(path, { method = 'GET', body, raw, noAuthRedirect } = {}) {
     const opts = { method, headers: {} };
     if (csrfToken) opts.headers['X-CSRF-Token'] = csrfToken;
     if (raw) {
@@ -27,7 +27,7 @@
       opts.body = JSON.stringify(body);
     }
     const res = await fetch(path, opts);
-    if (res.status === 401) {
+    if (res.status === 401 && !noAuthRedirect) {
       window.location.href = '/admin/login';
       throw new Error('未登录');
     }
@@ -41,17 +41,50 @@
   // —— auth ——
   const loginForm = document.getElementById('login-form');
   if (loginForm) {
+    const errorBox = document.getElementById('login-error');
+    const errorMsg = document.getElementById('login-error-msg');
+
+    const showLoginError = (message) => {
+      if (!errorBox || !errorMsg) return;
+      errorMsg.textContent = message;
+      errorBox.hidden = false;
+      // Restart the shake so a repeated failure is just as noticeable.
+      errorBox.classList.remove('alert--shake');
+      void errorBox.offsetWidth;
+      errorBox.classList.add('alert--shake');
+      const userInput = loginForm.querySelector('input[name="username"]');
+      const passInput = loginForm.querySelector('input[name="password"]');
+      (userInput.value ? passInput : userInput).focus();
+    };
+    const hideLoginError = () => {
+      if (errorBox) errorBox.hidden = true;
+    };
+    // Typing again clears the stale error, so the form always reflects
+    // the current input instead of a dead "wrong password" from before.
+    loginForm.querySelectorAll('input').forEach((input) => {
+      input.addEventListener('input', hideLoginError);
+    });
+
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(loginForm);
+      const submitBtn = loginForm.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '登录中…';
+      hideLoginError();
       try {
+        // noAuthRedirect: a failed login must surface inline — reloading the
+        // page here would wipe the credentials the user already typed.
         await api('/api/login', {
           method: 'POST',
+          noAuthRedirect: true,
           body: { username: fd.get('username'), password: fd.get('password') },
         });
         window.location.href = '/admin';
       } catch (err) {
-        toast(err.message, true);
+        showLoginError(err.message || '登录失败，请重试。');
+        submitBtn.disabled = false;
+        submitBtn.textContent = '登录';
       }
     });
   }
@@ -142,7 +175,7 @@
     const qs = encodeURIComponent(file.name);
     try {
       const result = await api(`/api/upload?filename=${qs}`, { method: 'POST', body: file, raw: true });
-      toast('上传成功');
+      toast(result.duplicate ? '文件内容与已有文件相同，已复用现有文件' : '上传成功');
       if (onDone) onDone(result);
     } catch (err) {
       toast(err.message, true);
@@ -196,6 +229,24 @@
         toast('已复制链接');
       } catch {
         toast('复制失败', true);
+      }
+    });
+  });
+
+  // —— media deletion (media page) ——
+  document.querySelectorAll('[data-media-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const name = btn.getAttribute('data-media-delete');
+      if (!window.confirm(`确定删除「${name}」吗？若仍被文章或随笔引用，删除会被拒绝。`)) return;
+      btn.disabled = true;
+      try {
+        await api('/api/media/delete', { method: 'POST', body: { name } });
+        toast('已删除');
+        const item = btn.closest('.media-item');
+        if (item) item.remove();
+      } catch (err) {
+        toast(err.message, true);
+        btn.disabled = false;
       }
     });
   });

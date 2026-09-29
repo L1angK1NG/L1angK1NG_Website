@@ -5,6 +5,7 @@
 // front-end stays a pure static build.
 import express from 'express';
 import session from 'express-session';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadEnv, ROOT } from './lib/env.mjs';
@@ -230,12 +231,60 @@ function listMedia() {
 
 app.get('/api/media', requireApiAuth, (_req, res) => res.json({ items: listMedia() }));
 
+// Content-hash dedupe: identical bytes map to the same stored file, no matter
+// what the incoming filename was, so articles share one physical copy instead
+// of stacking timestamped duplicates. The uploads folder is small, so hashing
+// the existing files per upload is cheap and leaves no index state to maintain.
+function findUploadByHash(hash) {
+  try {
+    if (!fs.existsSync(UPLOAD_DIR)) return null;
+    for (const entry of fs.readdirSync(UPLOAD_DIR, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(UPLOAD_DIR, entry.name))).digest('hex');
+      if (digest === hash) return entry.name;
+    }
+  } catch {
+    /* on any failure, fall through and store a new copy */
+  }
+  return null;
+}
+
+// Media references live inside the Markdown content itself (cover frontmatter
+// and body images/links) — there is no database, so the referencing scan walks
+// the content files. Both the raw and percent-encoded URL forms count.
+function findUploadReferences(name) {
+  const needle = `/uploads/${name}`;
+  const needleEncoded = `/uploads/${encodeURIComponent(name)}`;
+  const refs = [];
+  for (const collectionName of Object.keys(content.COLLECTIONS)) {
+    for (const entry of content.listEntries(collectionName)) {
+      const haystack = `${entry.data?.cover ?? ''}\n${entry.body ?? ''}`;
+      if (haystack.includes(needle) || haystack.includes(needleEncoded)) {
+        refs.push(`${collectionName}/${entry.id}`);
+      }
+    }
+  }
+  return refs;
+}
+
 const SAFE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif', '.ico']);
 app.post('/api/upload', requireApiAuth, requireCsrf, express.raw({ type: () => true, limit: '15mb' }), wrap(async (req, res) => {
   const original = String(req.query.filename || 'image.png');
   const ext = path.extname(original).toLowerCase();
   if (!SAFE_EXT.has(ext)) return res.status(400).json({ error: '不支持的文件类型' });
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: '文件为空' });
+
+  const incomingHash = crypto.createHash('sha256').update(req.body).digest('hex');
+  const existingName = findUploadByHash(incomingHash);
+  if (existingName) {
+    return res.json({
+      ok: true,
+      url: `/uploads/${existingName}`,
+      name: existingName,
+      duplicate: true,
+      message: '文件内容与已有文件相同，已复用现有文件。',
+    });
+  }
 
   const base = path
     .basename(original, ext)
@@ -245,7 +294,24 @@ app.post('/api/upload', requireApiAuth, requireCsrf, express.raw({ type: () => t
   const name = `${Date.now()}-${base}${ext}`;
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   fs.writeFileSync(path.join(UPLOAD_DIR, name), req.body);
-  res.json({ ok: true, url: `/uploads/${name}`, name });
+  res.json({ ok: true, url: `/uploads/${name}`, name, duplicate: false });
+}));
+
+app.post('/api/media/delete', requireApiAuth, requireCsrf, wrap(async (req, res) => {
+  const name = path.basename(String(req.body?.name || ''));
+  const filePath = path.join(UPLOAD_DIR, name);
+  if (!name || name.startsWith('.') || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return res.status(404).json({ error: '文件不存在' });
+  }
+  const references = findUploadReferences(name);
+  if (references.length > 0) {
+    return res.status(409).json({
+      error: `该文件仍被 ${references.length} 篇内容引用（${references.join('、')}），请先移除引用再删除。`,
+      references,
+    });
+  }
+  fs.unlinkSync(filePath);
+  res.json({ ok: true, message: '已删除。' });
 }));
 
 // —— build ——

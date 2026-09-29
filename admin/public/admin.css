@@ -205,6 +205,7 @@ img { max-width: 100%; }
 .media-item img { width: 100%; height: 150px; object-fit: cover; display: block; background: var(--surface-muted); }
 .media-item__meta { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .media-item__meta code { font-size: 11px; color: var(--text-faint); word-break: break-all; }
+.media-item__actions { display: flex; gap: 6px; }
 
 /* —— build —— */
 .log {
@@ -223,7 +224,21 @@ img { max-width: 100%; }
 .login-card .brand { padding: 0 0 6px; }
 .login-sub { margin: 0 0 20px; color: var(--text-muted); }
 .alert { padding: 10px 12px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 14px; }
-.alert--error { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.alert--error {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger);
+  font-weight: 550;
+}
+.alert--error svg { flex-shrink: 0; margin-top: 2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .alert--shake { animation: alert-shake 0.4s both; }
+}
+@keyframes alert-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-3px); }
+  40%, 60% { transform: translateX(3px); }
+}
 
 /* —— toast —— */
 .toast {
@@ -242,4 +257,58 @@ img { max-width: 100%; }
   .main { padding: 20px 16px 48px; }
   .editor { grid-template-columns: 1fr; }
   .editor__form { position: static; }
+}
+
+/* ---------- Route transitions (mirrors the blog front-end) ----------
+   The front-end animates only its main content: root snapshot disabled,
+   chrome static, old content fades out in 70ms, new content fades in for
+   130ms after that 70ms gap (text never crossfades on top of text). The
+   admin replicates the same choreography with cross-document View
+   Transitions: sidebar and main are named so they lift out of the root
+   snapshot, leaving the root with identical backgrounds on both sides. */
+@view-transition {
+  navigation: auto;
+}
+
+.sidebar { view-transition-name: admin-sidebar; }
+.main { view-transition-name: admin-page-content; }
+
+::view-transition-group(admin-page-content) {
+  animation-duration: 200ms;
+}
+
+@keyframes adminRouteOut {
+  from { opacity: 1; transform: translate3d(0, 0, 0); }
+  to { opacity: 0; transform: translate3d(0, -2px, 0); }
+}
+
+@keyframes adminRouteIn {
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(admin-page-content) {
+    animation: adminRouteOut 70ms cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  ::view-transition-new(admin-page-content) {
+    animation: adminRouteIn 130ms cubic-bezier(0.22, 1, 0.36, 1) 70ms both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+
+/* Browsers without View Transitions (e.g. Firefox) play the entry half of
+   the same motion on each page load; exiting pages simply swap instantly. */
+@supports not (view-transition-name: none) {
+  @media (prefers-reduced-motion: no-preference) {
+    .main { animation: adminRouteIn 130ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+  }
 }

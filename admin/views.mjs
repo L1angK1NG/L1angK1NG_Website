@@ -120,7 +120,10 @@ export function loginPage({ csrfToken, error }) {
   <div class="login-card">
     <div class="brand"><span class="brand__mark">◆</span> 博客后台</div>
     <p class="login-sub">管理员登录</p>
-    ${error ? `<div class="alert alert--error">${esc(error)}</div>` : ''}
+    <div class="alert alert--error" id="login-error"${error ? '' : ' hidden'} role="alert">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>
+      <span id="login-error-msg">${esc(error || '')}</span>
+    </div>
     <form id="login-form" autocomplete="on">
       <label class="field"><span class="field__label">用户名</span><input class="input" type="text" name="username" autocomplete="username" required /></label>
       <label class="field"><span class="field__label">密码</span><input class="input" type="password" name="password" autocomplete="current-password" required /></label>
@@ -251,7 +254,10 @@ export function mediaPage({ user, boot, files }) {
         <img src="${esc(f.url)}" alt="${esc(f.name)}" loading="lazy" />
         <div class="media-item__meta">
           <code>${esc(f.url)}</code>
-          <button type="button" class="btn btn--sm" data-copy="${esc(f.url)}">复制链接</button>
+          <div class="media-item__actions">
+            <button type="button" class="btn btn--sm" data-copy="${esc(f.url)}">复制链接</button>
+            <button type="button" class="btn btn--sm btn--danger" data-media-delete="${esc(f.name)}">删除</button>
+          </div>
         </div>
       </div>`,
     )
