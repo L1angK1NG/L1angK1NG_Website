@@ -1,6 +1,6 @@
-/* Admin panel styles. Mirrors the blog's clay/neutral palette (from
-   src/styles/global.css) so the backend feels like part of the same product.
-   Light and dark follow the OS preference. */
+/* 后台面板样式。沿用博客的陶土/中性配色（来自
+   src/styles/global.css），让后台看起来属于同一产品。
+   亮色与暗色主题跟随操作系统偏好。 */
 
 :root {
   --bg: #f8f7f4;
@@ -51,8 +51,8 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-/* The hidden attribute must always win over component display values
-   (e.g. .alert--error sets display:flex and would override it otherwise). */
+/* hidden 属性必须始终优先于组件自身的 display 值
+   （例如 .alert--error 设置了 display:flex，否则会覆盖 hidden 的效果）。 */
 [hidden] { display: none !important; }
 body {
   font-family: var(--font);
@@ -66,7 +66,7 @@ a { color: inherit; text-decoration: none; }
 code, pre { font-family: var(--mono); }
 img { max-width: 100%; }
 
-/* —— app shell —— */
+/* —— 应用框架 —— */
 .app { display: flex; min-height: 100vh; }
 .sidebar {
   width: var(--sidebar-w);
@@ -102,7 +102,7 @@ img { max-width: 100%; }
 .page__head p { margin: 0; color: var(--text-muted); }
 .page__head--row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 
-/* —— cards & stats —— */
+/* —— 卡片与统计 —— */
 .card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 22px; margin-bottom: 18px;
@@ -122,7 +122,7 @@ img { max-width: 100%; }
 .kv span { color: var(--text-muted); }
 .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 
-/* —— buttons —— */
+/* —— 按钮 —— */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 9px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
@@ -131,7 +131,8 @@ img { max-width: 100%; }
 }
 .btn:hover { background: var(--surface-muted); }
 .btn--primary { background: var(--primary); border-color: var(--primary); color: #fff; }
-.btn--primary:hover { filter: brightness(1.05); }
+/* 显式声明悬停背景：.btn:hover 与本规则特异性相同，不写回背景色会被其覆盖成浅米色 */
+.btn--primary:hover { background: var(--primary); filter: brightness(1.06); }
 .btn--danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
 .btn--danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .btn--ghost { border-color: var(--border); }
@@ -139,7 +140,7 @@ img { max-width: 100%; }
 .btn--block { width: 100%; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
-/* —— forms —— */
+/* —— 表单 —— */
 .field { display: block; margin-bottom: 16px; }
 .field__label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; font-weight: 550; }
 .field__hint { display: block; font-size: 12px; color: var(--text-faint); margin-top: 5px; }
@@ -155,7 +156,7 @@ img { max-width: 100%; }
 }
 .input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent); }
 
-/* —— table —— */
+/* —— 表格 —— */
 .table { width: 100%; border-collapse: collapse; }
 .table th { text-align: left; padding: 10px 12px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border); }
 .table td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -171,7 +172,7 @@ img { max-width: 100%; }
 .badge--pub { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
 .badge--draft { background: var(--surface-muted); color: var(--text-muted); }
 
-/* —— editor —— */
+/* —— 编辑器 —— */
 .editor { display: grid; grid-template-columns: 320px 1fr; gap: 18px; align-items: start; }
 .editor__form { position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
 .editor__body-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -196,7 +197,7 @@ img { max-width: 100%; }
 .prose table { border-collapse: collapse; width: 100%; }
 .prose th, .prose td { border: 1px solid var(--border); padding: 8px 10px; }
 
-/* —— media —— */
+/* —— 媒体 —— */
 .upload-zone {
   border: 2px dashed var(--border-strong); border-radius: var(--radius);
   padding: 34px; text-align: center; color: var(--text-muted);
@@ -210,7 +211,7 @@ img { max-width: 100%; }
 .media-item__meta code { font-size: 11px; color: var(--text-faint); word-break: break-all; }
 .media-item__actions { display: flex; gap: 6px; }
 
-/* —— build —— */
+/* —— 构建 —— */
 .log {
   background: var(--bg-tint); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 16px; max-height: 420px; overflow: auto; font-size: 12.5px; line-height: 1.55;
@@ -221,7 +222,7 @@ img { max-width: 100%; }
 .release:last-child { border-bottom: none; }
 .release--current code { color: var(--primary); font-weight: 600; }
 
-/* —— login —— */
+/* —— 登录 —— */
 .login-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg-tint); padding: 20px; }
 .login-card { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 30px; box-shadow: var(--shadow); }
 .login-card .brand { padding: 0 0 6px; }
@@ -243,7 +244,7 @@ img { max-width: 100%; }
   40%, 60% { transform: translateX(3px); }
 }
 
-/* —— toast —— */
+/* —— 提示条 —— */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
   background: var(--accent); color: var(--bg); padding: 11px 20px; border-radius: 40px;
@@ -262,13 +263,11 @@ img { max-width: 100%; }
   .editor__form { position: static; }
 }
 
-/* ---------- Route transitions (mirrors the blog front-end) ----------
-   The front-end animates only its main content: root snapshot disabled,
-   chrome static, old content fades out in 70ms, new content fades in for
-   130ms after that 70ms gap (text never crossfades on top of text). The
-   admin replicates the same choreography with cross-document View
-   Transitions: sidebar and main are named so they lift out of the root
-   snapshot, leaving the root with identical backgrounds on both sides. */
+/* ---------- 路由切换（与博客前台保持一致） ----------
+   前台只对主内容做动画：禁用根快照，页面框架保持静态，旧内容在 70ms 内
+   淡出，新内容在 70ms 间隔之后用 130ms 淡入（文本永远不会叠在文本上交叉
+   淡化）。后台用跨文档 View Transitions 复刻了同样的编排：sidebar 和 main
+   已被命名，会从根快照中单独提升出来，让根快照两侧的背景完全一致。 */
 @view-transition {
   navigation: auto;
 }
@@ -308,8 +307,8 @@ img { max-width: 100%; }
   }
 }
 
-/* Browsers without View Transitions (e.g. Firefox) play the entry half of
-   the same motion on each page load; exiting pages simply swap instantly. */
+/* 不支持 View Transitions 的浏览器（如 Firefox）在每次页面加载时播放
+   同一动效的入场部分；离场页面则直接瞬间切换。 */
 @supports not (view-transition-name: none) {
   @media (prefers-reduced-motion: no-preference) {
     .main { animation: adminRouteIn 130ms cubic-bezier(0.22, 1, 0.36, 1) both; }
