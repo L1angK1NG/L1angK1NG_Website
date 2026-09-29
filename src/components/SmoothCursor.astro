@@ -1,0 +1,197 @@
+---
+// 平滑跟随光标（Smooth Cursor）：进入页面后隐藏系统光标，改用网页内的双层光标。
+//   - 圆点：即时贴合指针位置，保证精确指向（点哪是哪）
+//   - 圆环：惯性滞后平滑追随，就是「光滑移动」的视觉主体
+//   - 悬停链接/按钮等可交互元素时圆环放大，按下时收缩反馈
+// 仅在支持鼠标的设备启用；文本输入框保留系统文本光标（否则无法定位插入点）；
+// prefers-reduced-motion 时圆环直接贴合、无放大动画。元素带 transition:persist，
+// View Transitions 换页时保持同一 DOM 节点，无需重绑。
+---
+
+<div id="smooth-cursor" aria-hidden="true" transition:persist="smooth-cursor">
+  <div id="sc-ring"><div class="sc-ring-inner"></div></div>
+  <div id="sc-dot"><div class="sc-dot-inner"></div></div>
+</div>
+
+<style>
+  /* 脚本就绪后才隐藏系统光标（JS 加类），脚本不可用时浏览器保持默认光标 */
+  :global(html.sc-on),
+  :global(html.sc-on a),
+  :global(html.sc-on button),
+  :global(html.sc-on label),
+  :global(html.sc-on summary),
+  :global(html.sc-on select),
+  :global(html.sc-on [role='button']),
+  :global(html.sc-on [role='link']) {
+    cursor: none;
+  }
+  /* 文本输入场景必须保留系统文本光标，否则无法看到插入点位置 */
+  :global(html.sc-on input:is(:not([type='button']):not([type='submit']):not([type='checkbox']):not([type='radio']))),
+  :global(html.sc-on textarea),
+  :global(html.sc-on [contenteditable]) {
+    cursor: text;
+  }
+
+  #smooth-cursor {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2147483000;
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+  }
+  #smooth-cursor.sc-visible {
+    opacity: 1;
+  }
+
+  /* 外层每帧只写 translate3d（合成器友好）；缩放动画放在内层，避免互相覆盖 */
+  #sc-ring,
+  #sc-dot {
+    position: fixed;
+    left: 0;
+    top: 0;
+    will-change: transform;
+  }
+  .sc-ring-inner {
+    width: 32px;
+    height: 32px;
+    margin: -16px 0 0 -16px;
+    border: 1.5px solid rgba(180, 100, 60, 0.55);
+    border-radius: 50%;
+    transition: transform 0.22s ease-out, background-color 0.22s ease-out, border-color 0.22s ease-out;
+    transform: scale(1);
+  }
+  .sc-dot-inner {
+    width: 6px;
+    height: 6px;
+    margin: -3px 0 0 -3px;
+    border-radius: 50%;
+    background: #b0532b;
+    transition: transform 0.18s ease-out;
+    transform: scale(1);
+  }
+
+  /* 悬停可交互元素：圆环放大并轻微填充 */
+  :global(#smooth-cursor.sc-hover) .sc-ring-inner {
+    transform: scale(1.55);
+    background: rgba(180, 100, 60, 0.12);
+    border-color: rgba(180, 100, 60, 0.75);
+  }
+  /* 按下反馈：圆环收缩、圆点放大 */
+  :global(#smooth-cursor.sc-press) .sc-ring-inner {
+    transform: scale(0.82);
+    background: rgba(180, 100, 60, 0.22);
+  }
+  :global(#smooth-cursor.sc-press) .sc-dot-inner {
+    transform: scale(1.7);
+  }
+
+  /* 深色主题下提高描边亮度，保证对比度 */
+  @media (prefers-color-scheme: dark) {
+    .sc-ring-inner {
+      border-color: rgba(208, 132, 92, 0.7);
+    }
+    .sc-dot-inner {
+      background: #d0845c;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sc-ring-inner,
+    .sc-dot-inner {
+      transition: none;
+    }
+    :global(#smooth-cursor.sc-hover) .sc-ring-inner {
+      transform: scale(1.25);
+    }
+    :global(#smooth-cursor.sc-press) .sc-ring-inner {
+      transform: scale(0.95);
+    }
+    :global(#smooth-cursor.sc-press) .sc-dot-inner {
+      transform: scale(1.2);
+    }
+  }
+</style>
+
+<script>
+  // 单个 rAF 循环驱动全部状态；transition:persist 保证换页后元素仍在，
+  // 事件全部委托到 window/document，因此无需在 astro:page-load 时重绑。
+  const finePointer = window.matchMedia('(pointer: fine)');
+
+  function initSmoothCursor() {
+    const root = document.getElementById('smooth-cursor');
+    if (!root || finePointer.matches === false) return;
+    // ClientRouter 换页会重置 <html> 的 class，因此每次 init 都重新盖上
+    // （幂等操作，放在防重检查之前，避免换页后系统光标「复活」变双光标）
+    document.documentElement.classList.add('sc-on');
+    if (root.dataset.bound === '1') return;
+    root.dataset.bound = '1';
+
+    const ring = document.getElementById('sc-ring');
+    const dot = document.getElementById('sc-dot');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    // 目标位置 = 真实指针；ring 位置用惯性追随目标
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight / 2;
+    let ringX = targetX;
+    let ringY = targetY;
+    let lastTime = performance.now();
+
+    const show = () => root.classList.add('sc-visible');
+    const hide = () => root.classList.remove('sc-visible');
+
+    // 悬停判定走事件委托：可交互元素集合，input/textarea 除外（那里保留文本光标）
+    const HOVERABLE = 'a, button, label, summary, select, [role="button"], [role="link"]';
+
+    window.addEventListener('mousemove', (e) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+      show();
+      const t = e.target;
+      root.classList.toggle(
+        'sc-hover',
+        t instanceof Element && t.closest(HOVERABLE) !== null,
+      );
+    }, { passive: true });
+
+    window.addEventListener('mousedown', () => root.classList.add('sc-press'));
+    window.addEventListener('mouseup', () => root.classList.remove('sc-press'));
+    document.documentElement.addEventListener('mouseenter', show);
+    document.documentElement.addEventListener('mouseleave', hide);
+
+    function tick(now) {
+      const dt = Math.min(64, now - lastTime) || 16;
+      lastTime = now;
+
+      // 圆点始终即时贴合，保证指向精度
+      dot.style.transform = `translate3d(${targetX}px, ${targetY}px, 0)`;
+
+      if (reduced.matches) {
+        // 降级：圆环直接贴合，无惯性拖尾
+        ringX = targetX;
+        ringY = targetY;
+      } else {
+        // 惯性追随：指数平滑，帧率无关；k 越接近 1 越跟手
+        const k = 1 - Math.pow(0.0008, dt / 1000);
+        ringX += (targetX - ringX) * k;
+        ringY += (targetY - ringY) * k;
+      }
+      ring.style.transform = `translate3d(${ringX}px, ${ringY}px, 0)`;
+
+      requestAnimationFrame(tick);
+    }
+
+    // 防止换页脚本重跑时叠加多个循环
+    if (!window.__scLoop) {
+      window.__scLoop = true;
+      requestAnimationFrame(tick);
+    }
+
+    // 启动后立即生效
+    show();
+  }
+
+  initSmoothCursor();
+  document.addEventListener('astro:page-load', initSmoothCursor);
+</script>
