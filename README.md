@@ -1,22 +1,24 @@
 # L1angK1NG_Website
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Astro-7.2-BC52EE?logo=astro&logoColor=white&style=flat-square" alt="Astro 7.2">
+  <img src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=nodedotjs&logoColor=white&style=flat-square" alt="Node.js 20+">
+  <img src="https://img.shields.io/badge/Express-4.22-444444?logo=express&logoColor=white&style=flat-square" alt="Express 4.22">
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white&style=flat-square" alt="TypeScript strict">
+</p>
+
 个人全栈博客：**静态前台 + 后台管理**。前台是纯静态构建产物，后台是一个小型 Node 管理服务，负责登录鉴权、在线编辑 Markdown，并在发布时触发一次前台构建、原子切换上线。
 
 ## 更新日志
 
-> 每次修复报告的问题后，会自动在此追加记录。
 
-### 2026-09-29
+### V1.0.0
 
+- **全栈改造**：新增后台管理系统（登录鉴权、文章/随笔管理、Markdown 编辑与实时预览、媒体上传、构建发布与版本回滚、草稿支持）
 - **修复**：后台保存含引号等特殊字符的路径时报 `ENOENT` —— 保存时路径自动净化（Windows 非法字符、空格等替换为连字符，中文与点号不受影响）
 - **修复**：删除内容后重新发布，被删内容仍出现在前台 —— 新增内容构建清单（`.content-build-manifest.json`），发布前检测到删除才重建缓存，删除可靠生效，且日常发布不再破坏 `npm run dev` 预览
 - **修复**：本地看不到发布结果 —— 后台新增「查看发布结果」（构建产物直接挂在后台服务根路径，与线上效果一致）
 - **清理**：移除原作者遗留静态资源（分享图 `share/og-default.jpg`、模板品牌兜底封面 → 替换为本站品牌版），清理重复上传文件；LICENSE 更新为 L1angK1NG + laogou717 双署名
-
-### 2026-09-28
-
-- **全栈改造**：新增后台管理系统（登录鉴权、文章/随笔管理、Markdown 编辑与实时预览、媒体上传、构建发布与版本回滚、草稿支持）
-- 项目更名为 **L1angK1NG_Website**，清除原作者遗留博客内容，作者名改为 L1angK1NG
 
 > **基于原作者项目开发**：本项目在 [laogou717/clay-blog](https://github.com/laogou717/clay-blog)（MIT 协议）的基础上改造而成——保留其 Astro 静态博客的全部前台能力（文章、随笔、归档、分类、标签、搜索、RSS、sitemap、Twikoo 评论、音乐播放器），新增后台管理端与「构建即发布」的全栈能力。感谢原作者的开源工作。
 
