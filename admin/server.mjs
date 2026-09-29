@@ -12,7 +12,7 @@ import { loadEnv, ROOT } from './lib/env.mjs';
 
 loadEnv();
 
-const { newCsrfToken, safeEqual, requireCsrf, verifyCredentials, isLocked, recordFailure, clearFailures } =
+const { newCsrfToken, safeEqual, requireCsrf, verifyCredentials, isLocked, recordFailure, clearFailures, MAX_LOGIN_ATTEMPTS } =
   await import('./lib/auth.mjs');
 const content = await import('./lib/content.mjs');
 const build = await import('./lib/build.mjs');
@@ -143,8 +143,12 @@ app.post('/api/login', requireCsrf, wrap(async (req, res) => {
 
   const { username, password } = req.body || {};
   if (!verifyCredentials(String(username || ''), String(password || ''))) {
-    recordFailure(req);
-    return res.status(401).json({ error: '用户名或密码错误。' });
+    const used = recordFailure(req);
+    const remaining = Math.max(0, MAX_LOGIN_ATTEMPTS - used);
+    const hint = remaining > 0
+      ? `（还可尝试 ${remaining} 次）`
+      : '（已触发保护锁定，请 15 分钟后再试或重启后台服务）';
+    return res.status(401).json({ error: `用户名或密码错误。${hint}` });
   }
   clearFailures(req);
 

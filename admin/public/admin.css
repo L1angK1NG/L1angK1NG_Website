@@ -51,6 +51,9 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* The hidden attribute must always win over component display values
+   (e.g. .alert--error sets display:flex and would override it otherwise). */
+[hidden] { display: none !important; }
 body {
   font-family: var(--font);
   background: var(--bg);

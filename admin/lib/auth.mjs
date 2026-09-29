@@ -66,7 +66,7 @@ export function requireCsrf(req, res, next) {
 
 const attempts = new Map();
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_ATTEMPTS = 8;
+export const MAX_LOGIN_ATTEMPTS = 8;
 const LOCK_MS = 15 * 60 * 1000; // lockout after too many failures
 
 const clientKey = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
@@ -85,6 +85,8 @@ export function isLocked(req) {
   return 0;
 }
 
+// Records a failed attempt and returns how many failures are now on file for
+// this client, so the route can tell the user how many tries remain.
 export function recordFailure(req) {
   const key = clientKey(req);
   const now = Date.now();
@@ -94,10 +96,11 @@ export function recordFailure(req) {
     rec.firstAt = now;
   }
   rec.count += 1;
-  if (rec.count >= MAX_ATTEMPTS) {
+  if (rec.count >= MAX_LOGIN_ATTEMPTS) {
     rec.lockedUntil = now + LOCK_MS;
   }
   attempts.set(key, rec);
+  return rec.count;
 }
 
 export function clearFailures(req) {
