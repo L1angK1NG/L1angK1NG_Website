@@ -1,16 +1,20 @@
 ---
-// 平滑跟随光标（Smooth Cursor）：进入页面后隐藏系统光标，改用网页内的双层光标。
-//   - 圆点：即时贴合指针位置，保证精确指向（点哪是哪）
-//   - 圆环：惯性滞后平滑追随，就是「光滑移动」的视觉主体
-//   - 悬停链接/按钮等可交互元素时圆环放大，按下时收缩反馈
-// 仅在支持鼠标的设备启用；文本输入框保留系统文本光标（否则无法定位插入点）；
-// prefers-reduced-motion 时圆环直接贴合、无放大动画。元素带 transition:persist，
-// View Transitions 换页时保持同一 DOM 节点，无需重绑。
+// 平滑跟随光标（Smooth Cursor）：进入页面后隐藏系统光标，改用网页内的自定义指针。
+//   - 指针素材为 shubiao.png（Q 版小公主 + 左上角金色四角星）
+//   - 热点精确对齐素材中星星的中心（星心 = 鼠标尖点），指哪打哪
+//   - 惯性平滑追随鼠标（光滑移动），移动时朝方向轻微倾斜
+//   - 悬停链接/按钮时放大、按下时收缩反馈
+// 仅在支持鼠标的设备启用；文本输入框保留系统文本光标；
+// prefers-reduced-motion 时直接贴合、无倾斜。元素带 transition:persist，
+// View Transitions 换页时保持同一 DOM 节点。
 ---
 
 <div id="smooth-cursor" aria-hidden="true" transition:persist="smooth-cursor">
-  <div id="sc-ring"><div class="sc-ring-inner"></div></div>
-  <div id="sc-dot"><div class="sc-dot-inner"></div></div>
+  <div id="sc-pos">
+    <div class="sc-face">
+      <img src="/cursor/shubiao.png" alt="" draggable="false" />
+    </div>
+  </div>
 </div>
 
 <style>
@@ -44,104 +48,82 @@
     opacity: 1;
   }
 
-  /* 外层每帧只写 translate3d（合成器友好）；缩放动画放在内层，避免互相覆盖 */
-  #sc-ring,
-  #sc-dot {
+  /* 外层每帧只写 transform（translate3d/rotate），缩放类动画放内层，互不覆盖 */
+  #sc-pos {
     position: fixed;
     left: 0;
     top: 0;
     will-change: transform;
   }
-  .sc-ring-inner {
-    width: 32px;
-    height: 32px;
-    margin: -16px 0 0 -16px;
-    border: 1.5px solid rgba(180, 100, 60, 0.55);
-    border-radius: 50%;
-    transition: transform 0.22s ease-out, background-color 0.22s ease-out, border-color 0.22s ease-out;
-    transform: scale(1);
-  }
-  .sc-dot-inner {
-    width: 6px;
-    height: 6px;
-    margin: -3px 0 0 -3px;
-    border-radius: 50%;
-    background: #b0532b;
-    transition: transform 0.18s ease-out;
+
+  .sc-face {
+    /* 热点偏移：素材中星星中心位于 (14%, 20%)，
+       显示宽 140px 时即向左上偏移约 (20px, 26px)，让星心钉在鼠标位置 */
+    margin: -26px 0 0 -20px;
+    transition: transform 0.22s ease-out;
     transform: scale(1);
   }
 
-  /* 悬停可交互元素：圆环放大并轻微填充 */
-  :global(#smooth-cursor.sc-hover) .sc-ring-inner {
-    transform: scale(1.55);
-    background: rgba(180, 100, 60, 0.12);
-    border-color: rgba(180, 100, 60, 0.75);
-  }
-  /* 按下反馈：圆环收缩、圆点放大 */
-  :global(#smooth-cursor.sc-press) .sc-ring-inner {
-    transform: scale(0.82);
-    background: rgba(180, 100, 60, 0.22);
-  }
-  :global(#smooth-cursor.sc-press) .sc-dot-inner {
-    transform: scale(1.7);
+  .sc-face img {
+    display: block;
+    width: 140px;
+    height: auto;
+    user-select: none;
+    /* 素材自带描边，浅阴影增加与页面内容的层次 */
+    filter: drop-shadow(0 3px 8px rgba(40, 60, 120, 0.22));
   }
 
-  /* 深色主题下提高描边亮度，保证对比度 */
-  @media (prefers-color-scheme: dark) {
-    .sc-ring-inner {
-      border-color: rgba(208, 132, 92, 0.7);
-    }
-    .sc-dot-inner {
-      background: #d0845c;
-    }
+  /* 悬停可交互元素：轻微放大 */
+  :global(#smooth-cursor.sc-hover) .sc-face {
+    transform: scale(1.08);
+  }
+  /* 按下反馈：收缩 */
+  :global(#smooth-cursor.sc-press) .sc-face {
+    transform: scale(0.9);
+    transition-duration: 0.1s;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .sc-ring-inner,
-    .sc-dot-inner {
+    .sc-face {
       transition: none;
     }
-    :global(#smooth-cursor.sc-hover) .sc-ring-inner {
-      transform: scale(1.25);
+    :global(#smooth-cursor.sc-hover) .sc-face {
+      transform: scale(1.04);
     }
-    :global(#smooth-cursor.sc-press) .sc-ring-inner {
-      transform: scale(0.95);
-    }
-    :global(#smooth-cursor.sc-press) .sc-dot-inner {
-      transform: scale(1.2);
+    :global(#smooth-cursor.sc-press) .sc-face {
+      transform: scale(0.96);
     }
   }
 </style>
 
 <script>
   // 单个 rAF 循环驱动全部状态；transition:persist 保证换页后元素仍在，
-  // 事件全部委托到 window/document，因此无需在 astro:page-load 时重绑。
+  // 事件全部委托到 window/document，无需在 astro:page-load 时重绑。
   const finePointer = window.matchMedia('(pointer: fine)');
 
   function initSmoothCursor() {
     const root = document.getElementById('smooth-cursor');
     if (!root || finePointer.matches === false) return;
-    // ClientRouter 换页会重置 <html> 的 class，因此每次 init 都重新盖上
-    // （幂等操作，放在防重检查之前，避免换页后系统光标「复活」变双光标）
+    // ClientRouter 换页会重置 <html> 的 class，每次 init 都重新盖上（幂等）
     document.documentElement.classList.add('sc-on');
     if (root.dataset.bound === '1') return;
     root.dataset.bound = '1';
 
-    const ring = document.getElementById('sc-ring');
-    const dot = document.getElementById('sc-dot');
+    const pos = document.getElementById('sc-pos');
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-    // 目标位置 = 真实指针；ring 位置用惯性追随目标
+    // 目标位置 = 真实指针；光标用惯性追随目标，形成光滑移动
     let targetX = window.innerWidth / 2;
     let targetY = window.innerHeight / 2;
-    let ringX = targetX;
-    let ringY = targetY;
+    let curX = targetX;
+    let curY = targetY;
+    let tilt = 0;
     let lastTime = performance.now();
 
     const show = () => root.classList.add('sc-visible');
     const hide = () => root.classList.remove('sc-visible');
 
-    // 悬停判定走事件委托：可交互元素集合，input/textarea 除外（那里保留文本光标）
+    // 悬停判定走事件委托；input/textarea 除外（那里保留系统文本光标）
     const HOVERABLE = 'a, button, label, summary, select, [role="button"], [role="link"]';
 
     window.addEventListener('mousemove', (e) => {
@@ -164,20 +146,26 @@
       const dt = Math.min(64, now - lastTime) || 16;
       lastTime = now;
 
-      // 圆点始终即时贴合，保证指向精度
-      dot.style.transform = `translate3d(${targetX}px, ${targetY}px, 0)`;
-
       if (reduced.matches) {
-        // 降级：圆环直接贴合，无惯性拖尾
-        ringX = targetX;
-        ringY = targetY;
+        // 降级：直接贴合指针，无惯性、无倾斜
+        curX = targetX;
+        curY = targetY;
+        tilt = 0;
       } else {
-        // 惯性追随：指数平滑，帧率无关；k 越接近 1 越跟手
+        // 惯性追随：指数平滑、帧率无关；k 小收敛快，兼顾手感与指向精度
         const k = 1 - Math.pow(0.0008, dt / 1000);
-        ringX += (targetX - ringX) * k;
-        ringY += (targetY - ringY) * k;
+        const nextX = curX + (targetX - curX) * k;
+        const nextY = curY + (targetY - curY) * k;
+        const vx = nextX - curX;
+        curX = nextX;
+        curY = nextY;
+
+        // 移动感：横向速度转化为轻微倾斜角，指数回正
+        const targetTilt = Math.max(-6, Math.min(6, vx * 0.5));
+        tilt += (targetTilt - tilt) * Math.min(1, dt / 110);
       }
-      ring.style.transform = `translate3d(${ringX}px, ${ringY}px, 0)`;
+
+      pos.style.transform = `translate3d(${curX}px, ${curY}px, 0) rotate(${tilt.toFixed(2)}deg)`;
 
       requestAnimationFrame(tick);
     }
@@ -188,7 +176,6 @@
       requestAnimationFrame(tick);
     }
 
-    // 启动后立即生效
     show();
   }
 
