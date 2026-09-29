@@ -1,13 +1,13 @@
-// Generate an ADMIN_PASSWORD_HASH for the admin backend.
-// Usage: npm run admin:hash -- "your-new-password"
-//    or: echo "your-new-password" | npm run admin:hash
+// 为管理后台生成 ADMIN_PASSWORD_HASH。
+// 用法：npm run admin:hash -- "你的新密码"
+// 或者：echo "你的新密码" | npm run admin:hash
 import { hashPassword } from '../admin/lib/auth.mjs';
 
 const arg = process.argv[2];
 let password = arg;
 
 if (!password) {
-  // Read one line from stdin so the password doesn't land in shell history.
+  // 从 stdin 读取一行，避免密码留在 shell 历史记录中。
   password = await new Promise((resolve) => {
     let data = '';
     process.stdin.setEncoding('utf8');

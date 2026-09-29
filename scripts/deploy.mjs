@@ -1,6 +1,6 @@
-// Standalone "build and publish" — same pipeline the admin's publish button
-// uses. Handy for a first deploy or for a cron job that rebuilds on a schedule.
-// Usage: npm run deploy
+// 独立的"构建并发布"脚本 —— 与管理后台发布按钮使用的是同一条流水线。
+// 适合首次部署，或用于按计划定时重建的 cron 任务。
+// 用法：npm run deploy
 import { loadEnv } from '../admin/lib/env.mjs';
 
 loadEnv();
