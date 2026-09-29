@@ -58,15 +58,15 @@
 
   .sc-face {
     /* 热点偏移：素材中星星中心位于 (14%, 20%)，
-       显示宽 140px 时即向左上偏移约 (20px, 26px)，让星心钉在鼠标位置 */
-    margin: -26px 0 0 -20px;
+       显示宽 100px 时即向左上偏移约 (14px, 19px)，让星心钉在鼠标位置 */
+    margin: -19px 0 0 -14px;
     transition: transform 0.22s ease-out;
     transform: scale(1);
   }
 
   .sc-face img {
     display: block;
-    width: 140px;
+    width: 100px;
     height: auto;
     user-select: none;
     /* 素材自带描边，浅阴影增加与页面内容的层次 */
@@ -109,9 +109,6 @@
     if (root.dataset.bound === '1') return;
     root.dataset.bound = '1';
 
-    const pos = document.getElementById('sc-pos');
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
-
     // 目标位置 = 真实指针；光标用惯性追随目标，形成光滑移动
     let targetX = window.innerWidth / 2;
     let targetY = window.innerHeight / 2;
@@ -120,52 +117,66 @@
     let tilt = 0;
     let lastTime = performance.now();
 
-    const show = () => root.classList.add('sc-visible');
-    const hide = () => root.classList.remove('sc-visible');
-
     // 悬停判定走事件委托；input/textarea 除外（那里保留系统文本光标）
     const HOVERABLE = 'a, button, label, summary, select, [role="button"], [role="link"]';
 
     window.addEventListener('mousemove', (e) => {
       targetX = e.clientX;
       targetY = e.clientY;
-      show();
-      const t = e.target;
-      root.classList.toggle(
-        'sc-hover',
-        t instanceof Element && t.closest(HOVERABLE) !== null,
-      );
+      const rootNow = document.getElementById('smooth-cursor');
+      if (rootNow) {
+        rootNow.classList.add('sc-visible');
+        const t = e.target;
+        rootNow.classList.toggle(
+          'sc-hover',
+          t instanceof Element && t.closest(HOVERABLE) !== null,
+        );
+      }
     }, { passive: true });
 
-    window.addEventListener('mousedown', () => root.classList.add('sc-press'));
-    window.addEventListener('mouseup', () => root.classList.remove('sc-press'));
-    document.documentElement.addEventListener('mouseenter', show);
-    document.documentElement.addEventListener('mouseleave', hide);
+    window.addEventListener('mousedown', () => {
+      document.getElementById('smooth-cursor')?.classList.add('sc-press');
+    });
+    window.addEventListener('mouseup', () => {
+      document.getElementById('smooth-cursor')?.classList.remove('sc-press');
+    });
+    document.documentElement.addEventListener('mouseenter', () => {
+      document.getElementById('smooth-cursor')?.classList.add('sc-visible');
+    });
+    document.documentElement.addEventListener('mouseleave', () => {
+      document.getElementById('smooth-cursor')?.classList.remove('sc-visible');
+    });
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     function tick(now) {
       const dt = Math.min(64, now - lastTime) || 16;
       lastTime = now;
 
-      if (reduced.matches) {
-        // 降级：直接贴合指针，无惯性、无倾斜
-        curX = targetX;
-        curY = targetY;
-        tilt = 0;
-      } else {
-        // 惯性追随：指数平滑、帧率无关；k 小收敛快，兼顾手感与指向精度
-        const k = 1 - Math.pow(0.0008, dt / 1000);
-        const nextX = curX + (targetX - curX) * k;
-        const nextY = curY + (targetY - curY) * k;
-        const vx = nextX - curX;
-        curX = nextX;
-        curY = nextY;
+      // 每帧重新取元素：换页/HMR 重建 DOM 时自愈，避免循环驱动游离节点
+      const pos = document.getElementById('sc-pos');
+      if (pos) {
+        if (reduced.matches) {
+          // 降级：直接贴合指针，无惯性、无倾斜
+          curX = targetX;
+          curY = targetY;
+          tilt = 0;
+        } else {
+          // 惯性追随：指数平滑、帧率无关；k 小收敛快，兼顾手感与指向精度
+          const k = 1 - Math.pow(0.0008, dt / 1000);
+          const nextX = curX + (targetX - curX) * k;
+          const nextY = curY + (targetY - curY) * k;
+          const vx = nextX - curX;
+          curX = nextX;
+          curY = nextY;
 
-        // 移动感：横向速度转化为轻微倾斜角，指数回正
-        const targetTilt = Math.max(-6, Math.min(6, vx * 0.5));
-        tilt += (targetTilt - tilt) * Math.min(1, dt / 110);
+          // 移动感：横向速度转化为轻微倾斜角，指数回正
+          const targetTilt = Math.max(-6, Math.min(6, vx * 0.5));
+          tilt += (targetTilt - tilt) * Math.min(1, dt / 110);
+        }
+
+        pos.style.transform = `translate3d(${curX}px, ${curY}px, 0) rotate(${tilt.toFixed(2)}deg)`;
       }
-
-      pos.style.transform = `translate3d(${curX}px, ${curY}px, 0) rotate(${tilt.toFixed(2)}deg)`;
 
       requestAnimationFrame(tick);
     }
@@ -175,8 +186,6 @@
       window.__scLoop = true;
       requestAnimationFrame(tick);
     }
-
-    show();
   }
 
   initSmoothCursor();
