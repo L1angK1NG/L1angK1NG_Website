@@ -1,0 +1,162 @@
+---
+// 像素风初音未来自定义光标：粉色像素三角钉在真实指针位置（保证指向精度），
+// 初音「挂」在箭头下方，以惯性平滑追随（光标距离），移动时随横向速度摆动（随帧摆动），
+// 快速移动时撒出金色星屑（视觉残影）。仅在支持鼠标的设备上启用；
+// 触屏设备不加载；prefers-reduced-motion 时初音直接贴合指针、无摆动与星屑。
+---
+
+<div id="miku-cursor" aria-hidden="true">
+  <img id="miku-arrow" src="/miku/arrow.png" alt="" />
+  <img id="miku-body" src="/miku/miku.png" alt="" />
+</div>
+
+<style>
+  /* 效果启用后才隐藏原生光标（JS 加类），脚本不可用时浏览器保持默认光标 */
+  :global(html.miku-on),
+  :global(html.miku-on *) {
+    cursor: none !important;
+  }
+
+  #miku-cursor {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 2147483000;
+    opacity: 0;
+    transition: opacity 0.18s ease-out;
+  }
+  #miku-cursor.miku-visible {
+    opacity: 1;
+  }
+
+  #miku-arrow,
+  #miku-body {
+    position: fixed;
+    left: 0;
+    top: 0;
+    image-rendering: pixelated;
+    will-change: transform;
+  }
+  #miku-arrow {
+    width: 18px;
+  }
+  #miku-body {
+    width: 48px;
+  }
+
+  /* 金色四角星屑（视觉残影）：出现后漂移、缩小、淡出 */
+  .miku-sparkle {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 7px;
+    height: 7px;
+    background: #f0b954;
+    clip-path: polygon(50% 0%, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0% 50%, 39% 39%);
+    pointer-events: none;
+    animation: miku-sparkle 0.55s ease-out both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .miku-sparkle {
+      display: none;
+    }
+  }
+  @keyframes miku-sparkle {
+    from {
+      opacity: 0.95;
+      transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+    }
+    to {
+      opacity: 0;
+      transform: translate3d(-6px, 14px, 0) scale(0.3) rotate(90deg);
+    }
+  }
+</style>
+
+<script>
+  // 用一个持久 rAF 循环驱动全部状态；ClientRouter 换页后元素会被替换，
+  // 因此在 astro:page-load 时重新抓取元素引用，循环本身只启动一次。
+  const finePointer = window.matchMedia('(pointer: fine)');
+
+  function initMikuCursor() {
+    const root = document.getElementById('miku-cursor');
+    if (!root || finePointer.matches === false) return;
+    if (root.dataset.bound === '1') return;
+    root.dataset.bound = '1';
+
+    const arrow = document.getElementById('miku-arrow');
+    const body = document.getElementById('miku-body');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    // 指针目标位置与初音当前位置（初音用惯性追随指针）
+    let targetX = window.innerWidth / 2;
+    let targetY = window.innerHeight / 2;
+    let mikuX = targetX;
+    let mikuY = targetY;
+    let sway = 0; // 当前摆动角度（度）
+    let lastSpawn = 0;
+    let lastTime = performance.now();
+
+    const show = () => root.classList.add('miku-visible');
+    const hide = () => root.classList.remove('miku-visible');
+
+    document.documentElement.addEventListener('mouseenter', show);
+    document.documentElement.addEventListener('mouseleave', hide);
+    window.addEventListener('mousemove', (e) => {
+      targetX = e.clientX;
+      targetY = e.clientY;
+      show();
+    }, { passive: true });
+
+    // 星屑：速度快时间隔撒出，数量有上限，动画结束自动移除
+    function spawnSparkle(x, y, now) {
+      if (now - lastSpawn < 90) return;
+      if (document.querySelectorAll('.miku-sparkle').length > 24) return;
+      lastSpawn = now;
+      const dot = document.createElement('div');
+      dot.className = 'miku-sparkle';
+      dot.style.transform = `translate3d(${x + (Math.random() * 18 - 9)}px, ${y + 18 + Math.random() * 10}px, 0)`;
+      dot.addEventListener('animationend', () => dot.remove());
+      root.appendChild(dot);
+    }
+
+    function tick(now) {
+      const dt = Math.min(64, now - lastTime) || 16;
+      lastTime = now;
+
+      if (reduced.matches) {
+        // 降级：初音直接贴合指针，无摆动、无星屑
+        mikuX = targetX;
+        mikuY = targetY;
+      } else {
+        // 惯性追随：k 越小跟随越「慢」，与参考站的「光标距离」手感一致
+        const k = 1 - Math.pow(0.0022, dt / 1000);
+        const nextX = mikuX + (targetX - mikuX) * k;
+        const nextY = mikuY + (targetY - mikuY) * k;
+        const vx = nextX - mikuX;
+        mikuX = nextX;
+        mikuY = nextY;
+
+        // 随帧摆动：横向速度转化为绕手部支点的摆角，指数回正
+        const targetSway = Math.max(-13, Math.min(13, vx * 1.35));
+        sway += (targetSway - sway) * Math.min(1, dt / 90);
+        if (Math.abs(vx) > 1.2) spawnSparkle(mikuX, mikuY, now);
+      }
+
+      // 箭头钉在指针上（热点在箭头左上角）；初音挂在箭头下方并绕手部支点摆动
+      arrow.style.transform = `translate3d(${targetX - 2}px, ${targetY - 2}px, 0)`;
+      body.style.transformOrigin = '14px 3px';
+      body.style.transform = `translate3d(${mikuX - 10}px, ${mikuY + 9}px, 0) rotate(${sway}deg)`;
+
+      requestAnimationFrame(tick);
+    }
+
+    if (!window.__mikuLoop) {
+      window.__mikuLoop = true;
+      requestAnimationFrame(tick);
+    }
+  }
+
+  initMikuCursor();
+  document.addEventListener('astro:page-load', initMikuCursor);
+</script>
