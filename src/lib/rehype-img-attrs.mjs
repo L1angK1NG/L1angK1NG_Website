@@ -1,6 +1,6 @@
-// Harden post-content images:
-// - referrerpolicy="no-referrer" bypasses image-host hotlink protection (防盗链)
-// - loading="lazy" / decoding="async" avoid eager-loading remote images and reduce jank
+// 加固正文中的图片：
+// - referrerpolicy="no-referrer" 可绕过图床的防盗链（hotlink protection）
+// - loading="lazy" / decoding="async" 避免急切加载远程图片，并减少卡顿
 const visit = (node, fn) => {
   if (!node) {
     return;

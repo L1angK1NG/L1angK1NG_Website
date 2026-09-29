@@ -1,9 +1,9 @@
-// File-backed content store for posts and notes. Content stays as Markdown with
-// YAML frontmatter under src/content/, so the Astro build (and its shortcodes,
-// search index, RSS) keeps working unchanged — the admin simply writes files.
+// 基于文件的文章与随笔内容存储。内容仍以带 YAML frontmatter 的 Markdown 形式
+// 保存在 src/content/ 下，因此 Astro 构建（及其短代码、搜索索引、RSS）无需
+// 任何改动即可继续工作 —— 管理后台只是负责写入文件。
 //
-// Each entry is identified by its path relative to the collection folder, minus
-// the .md extension (e.g. "技术/deploy-static"). That path becomes the post URL.
+// 每个条目由相对于集合文件夹的路径标识（去掉 .md 扩展名，例如
+// "技术/deploy-static"）。该路径即为文章的 URL。
 import fs from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
@@ -44,8 +44,8 @@ const toDateInput = (value) => {
 
 const isEmpty = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
 
-// Resolve an entry id to a real file path, refusing anything that would escape
-// the collection folder (ids come from URLs and form input).
+// 将条目 id 解析为真实的文件路径，拒绝任何会逃出集合文件夹的取值
+// （id 来自 URL 和表单输入）。
 function resolveFile(collectionName, id) {
   const col = COLLECTIONS[collectionName];
   if (!col) throw new Error('未知的内容类型');
@@ -61,12 +61,11 @@ function resolveFile(collectionName, id) {
   return { col, id: safeId, filePath };
 }
 
-// Slugs double as filenames and URLs. Windows forbids < > : " | ? * in names
-// (a stray quote makes the write fail with ENOENT), and characters like quotes,
-// spaces or % produce broken URLs on any OS — so everything outside a
-// conservative whitelist becomes a hyphen. Segments are also trimmed of edge
-// dots/hyphens: Windows drops trailing dots when creating directories, and
-// dot-leading files are invisible to the content glob.
+// slug 同时用作文件名和 URL。Windows 禁止文件名中出现 < > : " | ? *（夹带一
+// 个引号就会让写入失败并报 ENOENT），而引号、空格或 % 之类的字符在任何操作
+// 系统上都会产生损坏的 URL —— 因此保守白名单之外的所有字符一律替换为连字符。
+// 每一段还会去掉首尾的点/连字符：Windows 创建目录时会丢弃末尾的点，而以点
+// 开头的文件对内容 glob 来说不可见。
 const safeSegment = (segment) =>
   segment
     .replace(/[^A-Za-z0-9_\u4e00-\u9fa5.\-]+/g, '-')
@@ -130,7 +129,7 @@ export function listEntries(collectionName) {
   const col = COLLECTIONS[collectionName];
   if (!col) throw new Error('未知的内容类型');
   const entries = walkMarkdown(col.dir).map((f) => readEntry(collectionName, f));
-  // Newest first; ties broken by title, mirroring the blog's sort.
+  // 最新的排在前面；日期相同时按标题决胜，与博客的排序逻辑一致。
   entries.sort((a, b) => {
     const da = a.data.date ? new Date(a.data.date).getTime() : 0;
     const db = b.data.date ? new Date(b.data.date).getTime() : 0;
@@ -151,8 +150,8 @@ export function entryExists(collectionName, id) {
   return fs.existsSync(filePath);
 }
 
-// Build the frontmatter object for serialization. Existing unknown fields (e.g.
-// ai, main_color) are preserved so an edit never strips data the form omits.
+// 构建用于序列化的 frontmatter 对象。已存在的未知字段（例如 ai、main_color）
+// 会被保留，这样编辑时绝不会丢掉表单未覆盖的数据。
 function buildData(col, existing, input) {
   const data = { ...existing };
   for (const field of col.textFields) {
@@ -197,7 +196,7 @@ function buildData(col, existing, input) {
   for (const field of col.boolFields) {
     if (field in input) {
       const v = input[field] === true || input[field] === 'true' || input[field] === 'on';
-      // Keep the frontmatter clean: only record draft when it's actually a draft.
+      // 保持 frontmatter 简洁：只有确实是草稿时才写入 draft 字段。
       if (v) data[field] = true;
       else delete data[field];
     }
@@ -216,9 +215,8 @@ export function validateEntry(col, data) {
   return null;
 }
 
-// Save an entry. `id` locates it; `input` carries form fields; `body` is the
-// Markdown. When `originalId` is set and differs from `id`, the file is moved
-// (used for renaming / re-slugging).
+// 保存条目。`id` 用于定位条目；`input` 携带表单字段；`body` 是 Markdown 正文。
+// 当 `originalId` 已设置且与 `id` 不同时，文件会被移动（用于重命名/更改 slug）。
 export function saveEntry(collectionName, id, input, body, originalId) {
   const cleanId = sanitizeId(id);
   if (!cleanId) {
@@ -229,11 +227,11 @@ export function saveEntry(collectionName, id, input, body, originalId) {
   const renaming = Boolean(originalId) && originalId !== cleanId;
   const source = renaming ? resolveFile(collectionName, originalId) : null;
 
-  // A brand-new entry must not clobber an existing file at the same path.
+  // 全新条目不得覆盖同一路径下已有的文件。
   if (!originalId && fs.existsSync(target.filePath)) {
     throw new Error('该路径已存在内容，请换一个路径');
   }
-  // Renaming onto a path already used by a different entry is also a conflict.
+  // 重命名到已被其他条目占用的路径同样视为冲突。
   if (renaming && fs.existsSync(target.filePath) && target.filePath !== source.filePath) {
     throw new Error('目标路径已被占用，请换一个路径');
   }
@@ -262,9 +260,9 @@ export function deleteEntry(collectionName, id) {
   fs.unlinkSync(filePath);
 }
 
-// A slug suggestion for new entries: date-prefixed ASCII-ish path. The user can
-// override it in the form; Chinese slugs are allowed too (they match the
-// existing site URLs like /posts/技术/deploy-static/).
+// 为新条目生成 slug 建议：以日期为前缀、接近 ASCII 风格的路径。用户可以在
+// 表单中自行修改；也允许使用中文 slug（与站内现有的 /posts/技术/deploy-static/
+// 这类 URL 保持一致）。
 export function suggestId(collectionName, title, dateInput) {
   const date = dateInput ? new Date(dateInput) : new Date();
   const pad = (n) => String(n).padStart(2, '0');

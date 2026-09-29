@@ -1,5 +1,5 @@
-// Admin panel client. Vanilla JS, no build step. Talks to the JSON API with a
-// CSRF token, drives the editor's live preview, media uploads, and build runs.
+// 后台面板客户端。原生 JS，无需构建步骤。携带 CSRF token 调用 JSON API，
+// 驱动编辑器实时预览、媒体上传和构建任务。
 (() => {
   const boot = window.__BOOT__ || {};
   const csrfToken = boot.csrfToken || '';
@@ -38,7 +38,7 @@
     return data;
   }
 
-  // —— auth ——
+  // —— 登录认证 ——
   const loginForm = document.getElementById('login-form');
   if (loginForm) {
     const errorBox = document.getElementById('login-error');
@@ -48,7 +48,7 @@
       if (!errorBox || !errorMsg) return;
       errorMsg.textContent = message;
       errorBox.hidden = false;
-      // Restart the shake so a repeated failure is just as noticeable.
+      // 重新触发抖动动画，让连续的登录失败同样醒目。
       errorBox.classList.remove('alert--shake');
       void errorBox.offsetWidth;
       errorBox.classList.add('alert--shake');
@@ -59,8 +59,8 @@
     const hideLoginError = () => {
       if (errorBox) errorBox.hidden = true;
     };
-    // Typing again clears the stale error, so the form always reflects
-    // the current input instead of a dead "wrong password" from before.
+    // 重新输入时清除过期的错误提示，让表单始终反映当前输入，
+    // 而不是残留之前那条已失效的「密码错误」。
     loginForm.querySelectorAll('input').forEach((input) => {
       input.addEventListener('input', hideLoginError);
     });
@@ -73,8 +73,8 @@
       submitBtn.textContent = '登录中…';
       hideLoginError();
       try {
-        // noAuthRedirect: a failed login must surface inline — reloading the
-        // page here would wipe the credentials the user already typed.
+        // noAuthRedirect：登录失败必须在页面上内联提示——此时重新加载页面
+        // 会清空用户已经输入的凭据。
         await api('/api/login', {
           method: 'POST',
           noAuthRedirect: true,
@@ -95,13 +95,13 @@
       try {
         await api('/api/logout', { method: 'POST' });
       } catch {
-        /* ignore */
+        /* 忽略 */
       }
       window.location.href = '/admin/login';
     });
   }
 
-  // —— editor ——
+  // —— 编辑器 ——
   const bodyArea = document.getElementById('body');
   const slugInput = document.getElementById('slug');
   const urlPreview = document.getElementById('url-preview');
@@ -119,7 +119,7 @@
       updateUrlPreview();
     }
 
-    // Tabs: write / preview.
+    // 标签页：写作 / 预览。
     const previewEl = document.getElementById('preview');
     const tabs = document.querySelectorAll('.tab');
     tabs.forEach((tab) => {
@@ -170,7 +170,7 @@
     }
   }
 
-  // —— upload (cover field button + media page) ——
+  // —— 上传（封面字段按钮 + 媒体页面） ——
   async function uploadFile(file, onDone) {
     const qs = encodeURIComponent(file.name);
     try {
@@ -233,7 +233,7 @@
     });
   });
 
-  // —— media deletion (media page) ——
+  // —— 媒体删除（媒体页面） ——
   document.querySelectorAll('[data-media-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const name = btn.getAttribute('data-media-delete');
@@ -251,7 +251,7 @@
     });
   });
 
-  // —— delete (list page) ——
+  // —— 删除（列表页面） ——
   document.querySelectorAll('[data-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-delete');
@@ -268,7 +268,7 @@
     });
   });
 
-  // —— build ——
+  // —— 构建 ——
   const buildBtn = document.getElementById('build-btn');
   const rollbackBtn = document.getElementById('rollback-btn');
   const buildLog = document.getElementById('build-log');

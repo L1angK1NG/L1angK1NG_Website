@@ -2,8 +2,8 @@
 import Icon from './Icon.astro';
 import siteConfig from '../data/site.config.json';
 
-// Trailing slashes matter: hosts 301 `/archive` → `/archive/`, and a redirect
-// makes the browser skip the cross-document view transition.
+// 末尾斜杠很重要：主机会把 `/archive` 301 重定向到 `/archive/`，而重定向
+// 会让浏览器跳过跨文档的 View Transition。
 const pathname = Astro.url.pathname.endsWith('/')
   ? Astro.url.pathname
   : `${Astro.url.pathname}/`;
@@ -83,9 +83,8 @@ const isCurrent = (href: string) =>
     };
   };
 
-  // Keep the vertical centering in a separate 2D transform. Some Chromium
-  // builds reject percentage values in translate3d(), leaving the chip below
-  // the pill when only top: 50% is applied.
+  // 垂直居中保留在单独的 2D transform 中。部分 Chromium 版本不接受
+  // translate3d() 里的百分比值，只应用 top: 50% 时小块会落到胶囊下方。
   const transformFor = ({ x }: IndicatorState) => `translateX(${x}px) translateY(-50%)`;
 
   const stopIndicatorAnimation = () => {
@@ -108,8 +107,8 @@ const isCurrent = (href: string) =>
     const activeRect = active.getBoundingClientRect();
     const target: IndicatorState = {
       x: activeRect.left - pillRect.left,
-      // Vertical placement is owned by CSS (top: 50% + translateY(-50%)).
-      // JS only tracks the horizontal destination and the measured size.
+      // 垂直位置由 CSS 负责（top: 50% + translateY(-50%)）。
+      // JS 只跟踪水平目标位置和测量出的尺寸。
       y: 0,
       width: activeRect.width,
       height: activeRect.height,
@@ -179,9 +178,8 @@ const isCurrent = (href: string) =>
       if (current) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     });
-    // The indicator is already travelling to the clicked item while Astro
-    // fetches and swaps the next page. Re-measuring it at this point would
-    // write the destination twice and make the motion look like a flash.
+    // 在 Astro 拉取并替换下一个页面时，指示器已经在向被点击项移动。
+    // 此时重新测量会把目标位置写入两次，让动画看起来像一次闪跳。
     if (navMotion.pendingPath === pathname) {
       navMotion.pendingPath = '';
       return;
@@ -213,8 +211,8 @@ const isCurrent = (href: string) =>
 
   if (!navMotion.initialized) {
     syncCurrentNavItem();
-    // Start the indicator on the physical press, before Astro begins fetching
-    // the destination. Keyboard activation still reaches the click fallback.
+    // 在 Astro 开始请求目标页之前，物理按下时就移动指示器。
+    // 键盘激活仍然会走到 click 兜底逻辑。
     document.addEventListener('pointerdown', showPendingNavItem);
     document.addEventListener('click', (event) => {
       if (event.detail === 0) showPendingNavItem(event);

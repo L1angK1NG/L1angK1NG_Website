@@ -1,5 +1,5 @@
-// Loads the project's .env into process.env without overriding real env vars.
-// Kept dependency-free so the admin service starts even before npm install finishes.
+// 将项目的 .env 加载进 process.env，且不覆盖已有的真实环境变量。
+// 特意保持零依赖，这样即使 npm install 尚未完成，管理后台服务也能启动。
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

@@ -1,8 +1,8 @@
-// Auth primitives for the single-admin backend: scrypt password verification,
-// CSRF token checks, and a small in-memory login rate limiter.
+// 单管理员后台的认证基础组件：scrypt 密码校验、CSRF token 校验，以及一个
+// 小巧的内存版登录限流器。
 //
-// The password is never stored in plaintext. ADMIN_PASSWORD_HASH holds
-// "<salt>:<hex>" produced by `npm run admin:hash`.
+// 密码永远不会以明文存储。ADMIN_PASSWORD_HASH 保存由 `npm run admin:hash`
+// 生成的 "<salt>:<hex>"。
 import crypto from 'node:crypto';
 
 const SCRYPT_KEYLEN = 64;
@@ -30,7 +30,7 @@ export function verifyPassword(password, stored) {
 export function verifyCredentials(username, password) {
   const expectedUser = process.env.ADMIN_USER || 'admin';
   const storedHash = process.env.ADMIN_PASSWORD_HASH || '';
-  // Compare the username in constant time too; short-circuit only on empty config.
+  // 用户名同样使用恒定时间比较；仅在配置为空时才短路跳过。
   const userOk =
     typeof username === 'string' &&
     username.length === expectedUser.length &&
@@ -40,8 +40,8 @@ export function verifyCredentials(username, password) {
 }
 
 // —— CSRF ——
-// A per-session token double-checked on every state-changing request. The
-// cookie is SameSite=Strict, so this is belt-and-braces against CSRF.
+// 每个会话持有一个 token，并在每个更改状态的请求上做双重校验。Cookie 本身
+// 已是 SameSite=Strict，因此这只是针对 CSRF 的额外双保险。
 
 export function newCsrfToken() {
   return crypto.randomBytes(24).toString('hex');
@@ -60,14 +60,14 @@ export function requireCsrf(req, res, next) {
   return next();
 }
 
-// —— Login rate limiting ——
-// In-memory per-IP counter with lockout. Single instance, so this is enough to
-// blunt brute-force attempts without adding a dependency.
+// —— 登录限流 ——
+// 基于内存的按 IP 计数器，并带锁定机制。单实例部署下，无需引入额外依赖就
+// 足以挫败暴力破解尝试。
 
 const attempts = new Map();
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const WINDOW_MS = 15 * 60 * 1000; // 15 分钟
 export const MAX_LOGIN_ATTEMPTS = 8;
-const LOCK_MS = 15 * 60 * 1000; // lockout after too many failures
+const LOCK_MS = 15 * 60 * 1000; // 失败次数过多后的锁定时长
 
 const clientKey = (req) => req.ip || req.socket?.remoteAddress || 'unknown';
 
@@ -85,8 +85,8 @@ export function isLocked(req) {
   return 0;
 }
 
-// Records a failed attempt and returns how many failures are now on file for
-// this client, so the route can tell the user how many tries remain.
+// 记录一次失败尝试，并返回该客户端目前已登记的失败次数，方便路由告知用户
+// 还剩多少次尝试机会。
 export function recordFailure(req) {
   const key = clientKey(req);
   const now = Date.now();

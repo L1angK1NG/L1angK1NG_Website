@@ -24,7 +24,7 @@ const icons: Record<string, string> = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/>',
   github: '<path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.7 4.7 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.3 4.3 0 0 0-.1 3.2A4.7 4.7 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/>',
   download: '<path d="M12 3v11M7 10l5 5 5-5M5 19h14"/>',
-  // Weather + mood marks for 随笔 (line-art, matches sun/moon)
+  // 随笔用的天气与心情图标（线条风格，与 sun/moon 一致）
   cloud: '<path d="M7 18h9.5a3.5 3.5 0 0 0 .3-6.98 5 5 0 0 0-9.65-1.35A3.75 3.75 0 0 0 7 18Z"/>',
   'cloud-drizzle': '<path d="M8 12.5a4 4 0 0 1 .2-7.97 5 5 0 0 1 9.5 1.3 3.5 3.5 0 0 1 .3 6.67"/><path d="M8 17v1.5M8 20.5V21M12 18v1.5M12 21.5V22M16 17v1.5M16 20.5V21"/>',
   'cloud-rain': '<path d="M8 12.5a4 4 0 0 1 .2-7.97 5 5 0 0 1 9.5 1.3 3.5 3.5 0 0 1 .3 6.67"/><path d="M8 16v4M12 17v4M16 16v4"/>',
@@ -40,8 +40,8 @@ const icons: Record<string, string> = {
   idea: '<path d="M9.5 18h5M10.5 21h3"/><path d="M12 3a6.2 6.2 0 0 0-3.8 11.1c.6.5 1 1.2 1.05 2h5.5c.05-.8.45-1.5 1.05-2A6.2 6.2 0 0 0 12 3Z"/>',
 };
 
-// Official brand marks (Simple Icons, CC0). Rendered solid (fill), so a row of
-// real logos reads as one consistent set instead of hand-drawn approximations.
+// 官方品牌标志（来自 Simple Icons，CC0 协议）。以实心（fill）方式渲染，
+// 让一排真实 logo 呈现为一套统一的图标，而不是手绘的近似仿制。
 const brandIcons: Record<string, string> = {
   bilibili:
     '<path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.151.929.4.267.249.391.551.391.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786 1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c0-.373.129-.689.386-.947.258-.257.574-.386.947-.386zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373Z"/>',
@@ -58,12 +58,12 @@ const brandIcons: Record<string, string> = {
 
 const isBrand = name in brandIcons;
 const path = isBrand ? brandIcons[name] : (icons[name] ?? '');
-// Brand glyphs fill their viewBox edge-to-edge, unlike the padded line icons —
-// render them a touch smaller so they sit inside the button with matching room.
+// 品牌图形撑满整个 viewBox，与四周留白的线条图标不同 ——
+// 把它们渲染得略小一些，让它们在按钮内占据相称的空间。
 const renderSize = isBrand ? Math.round(size * 0.75) : size;
 
-// Per-icon optical tuning: some marks read heavier or sit off-center even at the
-// same box. Shrink/nudge them about the viewBox center (12,12); +dx right, -dy up.
+// 针对单个图标的视觉微调：在同样尺寸下，有些标志显得更重或偏离中心。
+// 以 viewBox 中心 (12,12) 为基准进行缩放/平移；+dx 向右，-dy 向上。
 const brandAdjust: Record<string, { scale?: number; dx?: number; dy?: number }> = {
   'x-platform': { scale: 0.86 },
   rss: { scale: 0.82, dx: 1.3, dy: -1.3 },

@@ -1,8 +1,8 @@
-// Admin backend: a small Express app that authenticates one admin, edits the
-// Markdown content in src/content/, and triggers a static rebuild + atomic swap.
+// 后台服务：一个小型 Express 应用，负责验证唯一的管理员身份、编辑
+// src/content/ 中的 Markdown 内容，并触发静态构建 + 原子切换。
 //
-// Served in production behind nginx at /admin and /api (see DEPLOY.md); the
-// front-end stays a pure static build.
+// 生产环境中由 nginx 反向代理在 /admin 和 /api 路径下提供服务（见 DEPLOY.md）；
+// 前台保持纯静态构建。
 import express from 'express';
 import session from 'express-session';
 import crypto from 'node:crypto';
@@ -46,7 +46,7 @@ app.use(
   }),
 );
 
-// —— auth middleware ——
+// —— 身份验证中间件 ——
 const ensureCsrf = (req) => {
   if (!req.session.csrfToken) req.session.csrfToken = newCsrfToken();
   return req.session.csrfToken;
@@ -62,7 +62,7 @@ function requirePageAuth(req, res, next) {
   return next();
 }
 
-// —— pages ——
+// —— 页面路由 ——
 app.get('/admin/login', (req, res) => {
   if (req.session?.user) return res.redirect('/admin');
   const csrfToken = ensureCsrf(req);
@@ -96,8 +96,8 @@ app.get('/admin', requirePageAuth, wrap(async (req, res) => {
 
 app.get('/admin/:collection', requirePageAuth, wrap(async (req, res, next) => {
   const collection = req.params.collection;
-  // Not a content collection (e.g. /admin/media, /admin/build) — defer to the
-  // specific routes registered after this generic one.
+  // 不是内容集合（如 /admin/media、/admin/build）——交由在这个通用路由之后
+  // 注册的特定路由处理。
   if (!content.COLLECTIONS[collection]) return next();
   const entries = content.listEntries(collection);
   res.send(views.listPage({ user: req.session.user, boot: currentBoot(req), collection, entries }));
@@ -136,7 +136,7 @@ app.get('/admin/build', requirePageAuth, wrap(async (req, res) => {
   );
 }));
 
-// —— auth API ——
+// —— 登录认证 API ——
 app.post('/api/login', requireCsrf, wrap(async (req, res) => {
   const lockedFor = isLocked(req);
   if (lockedFor > 0) return res.status(429).json({ error: `登录尝试过于频繁，请 ${lockedFor} 秒后再试。` });
@@ -152,7 +152,7 @@ app.post('/api/login', requireCsrf, wrap(async (req, res) => {
   }
   clearFailures(req);
 
-  // Rotate the session id on login to prevent fixation, then store identity.
+  // 登录时轮换 session id 以防止会话固定攻击，然后存储身份信息。
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ error: '登录失败，请重试。' });
     req.session.user = process.env.ADMIN_USER || 'admin';
@@ -171,7 +171,7 @@ app.post('/api/logout', (req, res) => {
   });
 });
 
-// —— content API ——
+// —— 内容 API ——
 app.get('/api/list/:collection', requireApiAuth, wrap(async (req, res) => {
   const collection = req.params.collection;
   if (!content.COLLECTIONS[collection]) return res.status(400).json({ error: '未知的内容类型' });
@@ -195,8 +195,8 @@ app.post('/api/save/:collection', requireApiAuth, requireCsrf, wrap(async (req, 
   }
   try {
     const saved = content.saveEntry(collection, targetId, fields || {}, body || '', originalId || null);
-    // Windows forbids < > : " | ? * in filenames, so the slug may have been
-    // sanitized — tell the author when the final path differs from the input.
+    // Windows 文件名不允许 < > : " | ? * 这些字符，因此 slug 可能已被自动
+    // 清洗——当最终路径与输入不一致时，要把这一点告知作者。
     const adjusted = saved.id !== targetId ? `，路径已自动调整为 ${saved.id}` : '';
     res.json({ ok: true, id: saved.id, message: `已保存到文件${adjusted}。发布需到「构建发布」。` });
   } catch (err) {
@@ -218,7 +218,7 @@ app.post('/api/preview', requireApiAuth, wrap(async (req, res) => {
   res.json({ html: renderPreview(req.body?.markdown || '') });
 }));
 
-// —— media ——
+// —— 媒体 ——
 const UPLOAD_DIR = path.join(ROOT, 'public', 'uploads');
 function listMedia() {
   try {
@@ -235,10 +235,10 @@ function listMedia() {
 
 app.get('/api/media', requireApiAuth, (_req, res) => res.json({ items: listMedia() }));
 
-// Content-hash dedupe: identical bytes map to the same stored file, no matter
-// what the incoming filename was, so articles share one physical copy instead
-// of stacking timestamped duplicates. The uploads folder is small, so hashing
-// the existing files per upload is cheap and leaves no index state to maintain.
+// 基于内容哈希去重：字节完全相同的文件无论上传时叫什么名字，都会映射到
+// 同一个已存储文件，这样多篇文章共享一份物理副本，而不是堆叠一堆带时间戳的
+// 重复文件。uploads 文件夹很小，因此每次上传时对现有文件逐一计算哈希开销
+// 很低，也无需维护任何索引状态。
 function findUploadByHash(hash) {
   try {
     if (!fs.existsSync(UPLOAD_DIR)) return null;
@@ -248,14 +248,14 @@ function findUploadByHash(hash) {
       if (digest === hash) return entry.name;
     }
   } catch {
-    /* on any failure, fall through and store a new copy */
+    /* 出现任何异常时直接跳过，存储一份新副本 */
   }
   return null;
 }
 
-// Media references live inside the Markdown content itself (cover frontmatter
-// and body images/links) — there is no database, so the referencing scan walks
-// the content files. Both the raw and percent-encoded URL forms count.
+// 媒体引用就存在于 Markdown 内容本身（封面 frontmatter 以及正文中的图片/链接）
+// —— 没有数据库，因此引用扫描会遍历内容文件。原始 URL 和百分号编码后的 URL
+// 两种形式都计入引用。
 function findUploadReferences(name) {
   const needle = `/uploads/${name}`;
   const needleEncoded = `/uploads/${encodeURIComponent(name)}`;
@@ -318,7 +318,7 @@ app.post('/api/media/delete', requireApiAuth, requireCsrf, wrap(async (req, res)
   res.json({ ok: true, message: '已删除。' });
 }));
 
-// —— build ——
+// —— 构建 ——
 app.post('/api/build', requireApiAuth, requireCsrf, wrap(async (_req, res) => {
   if (build.isBuilding()) return res.status(409).json({ error: '已有构建正在进行中。' });
   const result = await build.buildAndPublish();
@@ -338,20 +338,19 @@ app.post('/api/build/rollback', requireApiAuth, requireCsrf, wrap(async (_req, r
   }
 }));
 
-// Serve the blog's public/ so media and cover previews resolve in the editor.
-// Registered after all routes so nothing here can shadow an admin/API route.
+// 提供博客的 public/ 目录，让编辑器中的媒体和封面预览能正常解析。
+// 注册在所有路由之后，确保这里的静态服务不会遮蔽任何 admin/API 路由。
 app.use(express.static(path.join(ROOT, 'public'), { maxAge: '1h' }));
 
-// Serve the PUBLISHED site (current/) as the final fallback, so what the
-// 构建并发布 button produced is viewable locally at the admin origin — the
-// same bytes nginx will serve in production. npm run dev shows live source
-// instead; this shows the actual build output.
+// 将已发布的站点（current/）作为最终回退提供服务，这样「构建并发布」按钮
+// 产出的内容就能在本地后台源上直接查看——与生产环境中 nginx 提供的字节完全
+// 相同。npm run dev 展示的是实时源码；这里展示的则是实际的构建产物。
 app.use(express.static(path.join(ROOT, 'current')));
 
-// Before the first publish there is no site to show at /, so land on the admin.
+// 首次发布之前，/ 路径下没有站点可展示，因此直接落到后台页面。
 app.get('/', (_req, res) => res.redirect('/admin'));
 
-// Unknown GET paths mirror the published site's 404 page when a release exists.
+// 存在发布版本时，未知的 GET 路径沿用已发布站点的 404 页面。
 app.use((req, res, next) => {
   if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
   const notFound = path.join(ROOT, 'current', '404.html');
@@ -359,7 +358,7 @@ app.use((req, res, next) => {
   return next();
 });
 
-// —— error handling ——
+// —— 错误处理 ——
 app.use((err, req, res, _next) => {
   console.error('[admin]', err);
   if (req.path.startsWith('/api/')) return res.status(500).json({ error: '服务器内部错误' });

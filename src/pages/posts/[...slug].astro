@@ -42,8 +42,8 @@ const { newer, older } = getAdjacentPosts(posts, post);
 const relatedPosts = getRelatedPosts(posts, post);
 const tableOfContents = headings.filter((heading) => heading.depth >= 2 && heading.depth <= 3);
 
-// Group h3s under their parent h2 so the sidebar can reveal a section's
-// children only while reading that section (same pattern as the notes index).
+// 将 h3 归入其所属的 h2 之下，让侧边栏只在阅读对应章节时才展开该章节的
+// 子级条目（与随笔索引采用相同模式）。
 type TocGroup = { slug: string; text: string; children: { slug: string; text: string }[] };
 const tocGroups: TocGroup[] = [];
 for (const heading of tableOfContents) {
@@ -104,7 +104,7 @@ const articleSchema = {
           {tags.map((tag) => <span>{tag}</span>)}
         </div>
       )}
-      {/* Cover stays in header only when there's no TOC sidebar */}
+      {/* 没有目录侧边栏时，封面才保留在头部 */}
       {cover && tableOfContents.length < 2 && (
         <img
           class="article__cover"
@@ -120,7 +120,7 @@ const articleSchema = {
 
     <div class="article__body">
       <div class="article__main">
-        {/* When a TOC sidebar exists, cover moves here so it sits beside the TOC */}
+        {/* 有目录侧边栏时，封面移到这里，与目录并排显示 */}
         {cover && tableOfContents.length >= 2 && (
           <img
             class="article__cover"

@@ -17,7 +17,7 @@ const categories = getCategories(posts);
 const tags = getTags(posts);
 const years = groupPostsByYear(posts);
 
-// Show the frequently-used tags; collapse the long tail behind a toggle.
+// 展示常用标签；其余长尾标签折叠在展开按钮之后。
 const primaryTags = tags.slice(0, 16);
 const restTags = tags.slice(16);
 ---

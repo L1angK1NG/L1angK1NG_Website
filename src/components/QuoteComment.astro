@@ -1,6 +1,6 @@
 ---
-// Selection quote comments — select text in the article, then quote it into the
-// bottom comment box. Comments stay in one canonical thread.
+// 划词引用评论 —— 在文章中选中文字，然后引用到底部评论框。
+// 所有评论保持在同一个主评论串中。
 interface Props {
   selector?: string;
 }
@@ -82,17 +82,17 @@ const { selector = '.post-content' } = Astro.props;
         Math.max(12, selection.rect.left + window.scrollX + selection.rect.width / 2 - 42),
       );
 
-      // Position via left/top, NOT transform — the press/entrance animations
-      // use the standalone scale/translate properties, which multiply onto a
-      // transform-based position and would teleport the button off-cursor.
+      // 通过 left/top 定位，而不要用 transform —— 按压/入场动画使用独立的
+      // scale/translate 属性，它们会与基于 transform 的定位相乘，
+      // 导致按钮瞬移、脱离光标位置。
       button.style.left = `${Math.round(left)}px`;
       button.style.top = `${Math.round(top)}px`;
       button.hidden = false;
     };
 
     const quote = () => {
-      // Belt and braces: if the stored text was cleared by any event race,
-      // fall back to whatever is selected right now.
+      // 双保险：如果保存的文本因事件竞态被清空，
+      // 就回退为当前选中的内容。
       const live = clean(window.getSelection()?.toString());
       const detail = { text: quotedText || live, returnY: returnY || window.scrollY };
       if (!detail.text) return;
@@ -105,11 +105,11 @@ const { selector = '.post-content' } = Astro.props;
     document.addEventListener('selectionchange', show, { signal });
     document.addEventListener('mouseup', show, { signal });
     document.addEventListener('keyup', show, { signal });
-    // The button rides with the document (absolute positioning), so scrolling
-    // must NOT hide it — trackpad inertia was killing it before the click.
+    // 按钮随文档一起滚动（绝对定位），因此滚动时绝不能隐藏它
+    // —— 触控板惯性滚动曾让它在点击发生前就被隐藏。
     window.addEventListener('resize', hide, { passive: true, signal });
-    // Pressing the button would collapse the selection on mousedown (which
-    // hid the button before click could fire). Keep the selection alive.
+    // 按下按钮会让选区在 mousedown 时收起（按钮在 click 触发前就被隐藏）。
+    // 要保住选区不被清除。
     button.addEventListener('mousedown', (event) => event.preventDefault(), { signal });
     button.addEventListener('click', quote, { signal });
 

@@ -11,8 +11,8 @@ export const site = {
   author: siteConfig.siteAuthor,
 };
 
-// Published-only accessors. Drafts are written by the admin but never built into
-// the public site, so every page/feed filters through these.
+// 仅返回已发布内容的访问器。草稿由管理端撰写，但绝不会构建进公开站点，
+// 因此每个页面和 feed 都通过这些函数过滤。
 export const getPublishedPosts = async (): Promise<BlogPost[]> =>
   (await getCollection('posts')).filter((post) => !post.data.draft);
 
@@ -64,8 +64,8 @@ export const formatDate = (date?: Date) => {
 export const getPostDescription = (post: BlogPost) =>
   post.data.description ?? post.data.ai?.[0] ?? '技术记录与实践笔记。';
 
-// Real excerpt only — undefined instead of the generic filler, so list rows
-// can omit the line rather than repeat boilerplate under every old post.
+// 只用真实摘要 —— 没有时返回 undefined 而非通用占位文案，
+// 这样列表行可以直接省略这一行，而不是在每篇旧文章下重复样板文字。
 export const getPostExcerpt = (post: BlogPost) =>
   post.data.description ?? post.data.ai?.[0];
 

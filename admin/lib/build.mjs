@@ -1,13 +1,13 @@
-// Build orchestration: run `astro build`, then atomically publish the output so
-// the live site never serves a half-built page.
+// 构建编排：先运行 `astro build`，再原子化地发布构建产物，确保线上站点永远
+// 不会返回构建到一半的页面。
 //
-// Layout produced here:
-//   dist/               Astro build output (fresh on every build)
-//   releases/<ts>/      published snapshots
-//   current  -> releases/<ts>   the directory nginx serves
+// 这里产生的目录结构：
+//   dist/               Astro 构建产物（每次构建都是全新的）
+//   releases/<ts>/      已发布的快照
+//   current  -> releases/<ts>   nginx 对外提供服务的目录
 //
-// On success dist/ is renamed into releases/<ts> and the `current` link flips in
-// one atomic step. On failure the running site (current) is left untouched.
+// 成功时，dist/ 会被重命名为 releases/<ts>，`current` 链接在一步原子操作中
+// 完成切换。失败时，正在运行的站点（current）保持原样不受影响。
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -19,24 +19,22 @@ const DIST = path.join(ROOT, 'dist');
 const LOCK_DIR = path.join(ROOT, '.build-lock');
 const STATUS_FILE = path.join(RELEASES_DIR, '.last-build.json');
 const KEEP_RELEASES = 5;
-const LOG_LIMIT = 200_000; // keep at most ~200KB of build output
+const LOG_LIMIT = 200_000; // 最多保留约 200KB 的构建输出
 
 const rmrf = (p) => {
   try {
     fs.rmSync(p, { recursive: true, force: true });
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 };
 
-// Astro's content-layer cache is not pruned when a source file is deleted, so a
-// rebuild can keep emitting removed posts. The fix is to wipe the cache so the
-// build rescans src/content/ — but wiping it also destroys the state of a
-// concurrently running `npm run dev`, which shares the same files. Additions
-// and edits ARE picked up without any wipe, so the cache is only cleared when a
-// deletion actually happened. Deletions are detected with our own manifest of
-// the content files the last build saw — deliberately NOT by parsing Astro's
-// internal data-store, whose format is an implementation detail.
+// 删除源文件时，Astro 的 content-layer 缓存不会被清理，因此重新构建可能仍会
+// 输出已删除的文章。解决办法是清空缓存，让构建重新扫描 src/content/ —— 但
+// 清空缓存也会破坏并发运行的 `npm run dev` 的状态，因为两者共用同一批文件。
+// 新增和修改无需清缓存即可被识别，所以只有确实发生删除时才清空缓存。是否
+// 发生删除，是通过我们自己维护的清单（记录上次构建所见的内容文件）来检测
+// 的 —— 刻意不去解析 Astro 内部的 data-store，其格式属于实现细节。
 function clearContentCache() {
   rmrf(path.join(ROOT, '.astro'));
   rmrf(path.join(ROOT, 'node_modules', '.astro'));
@@ -62,7 +60,7 @@ function listContentFiles() {
   return out.sort();
 }
 
-// True when a content file that the last build saw has since been deleted.
+// 如果上次构建所见的内容文件此后被删除，则返回 true。
 export function contentWasDeletedSinceLastBuild(manifestPath = CONTENT_MANIFEST) {
   if (!fs.existsSync(manifestPath)) return false;
   let manifest;
@@ -84,7 +82,7 @@ function writeContentManifest() {
     fs.writeFileSync(tmp, JSON.stringify(listContentFiles(), null, 2), 'utf8');
     fs.renameSync(tmp, CONTENT_MANIFEST);
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -94,7 +92,7 @@ function acquireLock() {
     try {
       fs.writeFileSync(path.join(LOCK_DIR, 'pid'), String(process.pid));
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
     return true;
   } catch (e) {
@@ -103,9 +101,9 @@ function acquireLock() {
       try {
         age = Date.now() - fs.statSync(LOCK_DIR).mtimeMs;
       } catch {
-        /* ignore */
+        /* 忽略 */
       }
-      // A crashed build shouldn't block publishing forever.
+      // 已崩溃的构建不应永远阻塞发布。
       if (age > 15 * 60 * 1000) {
         rmrf(LOCK_DIR);
         return acquireLock();
@@ -122,9 +120,9 @@ function releaseLock() {
 
 function runCommand(command, args) {
   return new Promise((resolve) => {
-    // shell: npm is a .cmd on Windows and Node's spawn refuses to run .cmd
-    // without a shell (EINVAL). The command is static (no user input), so a
-    // shell here introduces no injection risk and works on Linux too.
+    // shell：npm 在 Windows 上是 .cmd 文件，Node 的 spawn 不借助 shell 无法
+    // 运行 .cmd（报 EINVAL）。这里的命令是固定字符串（不含用户输入），因此
+    // 使用 shell 不会引入注入风险，在 Linux 上也能正常工作。
     const child = spawn(command, args, {
       cwd: ROOT,
       env: process.env,
@@ -152,7 +150,7 @@ function publish(releaseDir) {
   rmrf(tmpLink);
   fs.symlinkSync(target, tmpLink, type);
   if (process.platform === 'win32') {
-    // Windows rename can't replace an existing dir link; remove first (dev only).
+    // Windows 的 rename 无法替换已存在的目录链接；需先删除（仅开发环境）。
     rmrf(CURRENT);
   }
   fs.renameSync(tmpLink, CURRENT);
@@ -190,7 +188,7 @@ function writeStatus(status) {
     fs.mkdirSync(RELEASES_DIR, { recursive: true });
     fs.writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2), 'utf8');
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -206,7 +204,7 @@ export function isBuilding() {
   return fs.existsSync(LOCK_DIR);
 }
 
-// Build the site and publish it. Resolves with { ok, log, release, message }.
+// 构建并发布站点。Promise 以 { ok, log, release, message } 兑现。
 export async function buildAndPublish() {
   if (!acquireLock()) throw new Error('已有构建正在进行中。');
   const startedAt = new Date().toISOString();
@@ -262,7 +260,7 @@ export async function buildAndPublish() {
   }
 }
 
-// Repoint `current` at the previous release. Returns the release rolled back to.
+// 把 `current` 重新指向上一个版本。返回回滚到的版本。
 export function rollback() {
   const releases = listReleases();
   const currentName = currentRelease();

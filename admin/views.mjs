@@ -1,7 +1,6 @@
-// Server-rendered HTML for the admin panel. Kept as template literals so the
-// backend has no view-engine dependency. The markup + admin.css + admin.js give
-// a small but complete CMS: dashboard, post/note editor with live preview,
-// media library, and a build/publish console.
+// 后台面板的服务端渲染 HTML。使用模板字符串编写，使后端不依赖任何视图引擎。
+// 这些标记 + admin.css + admin.js 组成了一个小而完整的 CMS：仪表盘、带实时
+// 预览的文章/随笔编辑器、媒体库，以及构建/发布控制台。
 import { COLLECTIONS } from './lib/content.mjs';
 
 export const esc = (v) =>

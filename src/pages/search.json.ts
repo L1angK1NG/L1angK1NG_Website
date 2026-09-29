@@ -14,8 +14,8 @@ export async function GET() {
     const category = getPostCategory(post);
     const tags = getPostTags(post);
     const keywords = post.data.keywords ?? [];
-    // Real excerpt only — the generic filler would both clutter result rows
-    // and make every post match queries like "笔记".
+    // 只用真实摘要 —— 通用的占位文案既会让结果行变得杂乱，
+    // 还会让每篇文章都匹配“笔记”这类查询。
     const description = getPostExcerpt(post) ?? '';
 
     return {

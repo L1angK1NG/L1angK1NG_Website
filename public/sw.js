@@ -1,6 +1,6 @@
-// Kill switch: this site does not use a service worker. If a previous site
-// version registered one under this path, this file replaces it, wipes its
-// caches, unregisters itself and reloads open tabs onto the network.
+// 熔断开关：本站不使用 service worker。如果之前版本的站点在此路径注册过
+// service worker，本文件会将其替换，清空其全部缓存，注销自身，并把已打开
+// 的标签页重新加载为直接走网络。
 self.addEventListener('install', () => {
   self.skipWaiting();
 });

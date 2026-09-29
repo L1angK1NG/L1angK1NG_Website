@@ -17,13 +17,13 @@ const posts = sortPosts(await getPublishedPosts());
 const featuredPosts = posts.filter((post) => (post.data.sticky ?? 0) > 0);
 const latestPosts = sortPostsByDate(posts).slice(0, 8);
 
-// Hero "精选" picks: sticky posts first, topped up with the latest, max 3.
+// 首屏「精选」推荐：置顶文章优先，再以最新文章补足，最多 3 篇。
 const heroPicks = [
   ...featuredPosts,
   ...latestPosts.filter((post) => !featuredPosts.some((f) => f.id === post.id)),
 ].slice(0, 5);
 
-// Warm clay/amber band for cover-less featured items, on palette.
+// 为无封面的精选项生成暖陶色/琥珀色相，保持在站点色板之内。
 const coverHue = (value: string) => {
   let hash = 0;
   for (const char of value) {

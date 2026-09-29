@@ -1,5 +1,5 @@
-// Shared comment UI + Twikoo backend client (no Twikoo front-end bundle).
-// Used by the bottom comment box and selection quote flow.
+// 共享的评论 UI + Twikoo 后端客户端（不引入 Twikoo 前端 bundle）。
+// 供底部评论框和划词引用流程使用。
 
 const esc = (s) =>
   String(s == null ? '' : s).replace(/[&<>"']/g, (m) =>
@@ -190,8 +190,8 @@ export function mountComments(root, { envId, url, onCount } = {}) {
     textEl.value = textEl.value.trim() ? `${textEl.value.trimEnd()}\n\n${quoted}` : quoted;
     form.classList.add('is-open');
     setStatus('已引用选中文本，发送后会回到刚才的位置。');
-    // Own the final landing: focus without scrolling (the browser's instant
-    // focus-scroll would race the smooth scroll), then glide to the composer.
+    // 掌控最终落点：聚焦但不滚动（浏览器聚焦时的瞬时滚动会和平滑滚动抢跑），
+    // 然后再平滑滑到输入框。
     window.setTimeout(() => {
       textEl.focus({ preventScroll: true });
       textEl.setSelectionRange(textEl.value.length, textEl.value.length);
@@ -220,8 +220,8 @@ export function mountComments(root, { envId, url, onCount } = {}) {
     loading = false;
   };
 
-  // Reveal the extra fields on focus. Once the open transition finishes, drop
-  // overflow:hidden so the inputs' focus ring isn't clipped at the edges.
+  // 聚焦时展开额外字段。展开过渡结束后移除 overflow:hidden，
+  // 避免输入框的聚焦外框在边缘处被裁剪。
   const revealExtra = () => {
     form.classList.add('is-open');
   };
@@ -283,7 +283,7 @@ export function mountComments(root, { envId, url, onCount } = {}) {
         span.textContent = (Number(span.textContent) || 0) + 1;
         likeBtn.classList.add('is-liked');
       } catch {
-        /* ignore */
+        /* 忽略 */
       }
     }
     if (replyBtn) {

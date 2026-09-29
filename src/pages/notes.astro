@@ -11,12 +11,12 @@ const all = (await getPublishedNotes()).sort(
   (a, b) => b.data.date.getTime() - a.data.date.getTime(),
 );
 
-// Pre-render each entry's markdown so the body can reuse the rich post styles.
+// 预渲染每条随笔的 markdown，让正文能复用文章的富文本样式。
 const entries = await Promise.all(
   all.map(async (note) => ({ note, Content: (await render(note)).Content })),
 );
 
-// Group by year (entries already sorted newest-first).
+// 按年份分组（条目已按最新在前排序）。
 type Entry = (typeof entries)[number];
 const byYear: { year: string; items: Entry[] }[] = [];
 for (const entry of entries) {
@@ -29,7 +29,7 @@ for (const entry of entries) {
   }
 }
 
-// First entry of each month gets an anchor id, for the time index to jump to.
+// 每个月的第一个条目会获得一个锚点 id，供时间索引跳转使用。
 const monthAnchor = new Map<string, string>();
 const seenMonth = new Set<string>();
 for (const { note } of entries) {
@@ -51,7 +51,7 @@ const timeIndex = byYear.map((group) => ({
     })),
 }));
 
-// Mood keyword -> designed icon. Accepts Chinese or English.
+// 心情关键词 -> 设计好的图标。支持中文或英文。
 const MOOD: Record<string, string> = {
   晴: 'sun', 晴天: 'sun', sunny: 'sun', clear: 'sun',
   阴: 'cloud', 阴天: 'cloud', cloudy: 'cloud', overcast: 'cloud',

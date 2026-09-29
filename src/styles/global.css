@@ -33,7 +33,7 @@
     rgba(204, 116, 66, 0.16),
     rgba(204, 116, 66, 0) 62%
   );
-  /* Liquid-glass material (nav pill, floating controls) */
+  /* 液态玻璃材质（导航胶囊、浮动控件） */
   --glass-tint: rgba(255, 255, 255, 0.5);
   --glass-sheen: linear-gradient(
     115deg,
@@ -48,11 +48,11 @@
   --glass-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.45),
     inset 0 -1px 1px rgba(255, 255, 255, 0.12),
     inset 0 0 18px rgba(255, 255, 255, 0.12);
-  /* Shared material definitions: dividers and photo edges.
-     They resolve against the theme's --border token automatically. */
+  /* 共享的材质定义：分隔线与图片边缘。
+     它们会基于主题的 --border 令牌自动解析。 */
   --hairline: color-mix(in srgb, var(--border) 72%, transparent);
   --edge: color-mix(in srgb, var(--border) 82%, transparent);
-  /* Motion — non-linear, Apple-style easing */
+  /* 动效 —— 非线性的 Apple 风格缓动 */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.76, 0, 0.24, 1);
@@ -138,8 +138,8 @@ body {
   min-width: 320px;
 }
 
-/* Page-level ambient glow — sits on the bottom-most layer, full-bleed,
-   fades into the background instead of being clipped inside the hero box. */
+/* 页面级环境光晕 —— 位于最底层、全幅铺开，
+   渐渐融入背景，而不是被裁剪在首屏（hero）盒子内部。 */
 body::before {
   content: "";
   position: fixed;
@@ -177,7 +177,7 @@ a:hover {
   border-radius: 4px;
 }
 
-/* Keyboard users: first Tab reveals a jump-to-content pill under the nav */
+/* 键盘用户：第一次按 Tab 键会在导航下方弹出"跳到内容"胶囊 */
 .skip-link {
   position: fixed;
   top: 0.85rem;
@@ -222,7 +222,7 @@ p {
   color: var(--accent-strong);
 }
 
-/* Brand-tinted selection where color-mix is supported (keeps text colors) */
+/* 在支持 color-mix 时使用品牌色调的选区（保留文字颜色） */
 @supports (background: color-mix(in srgb, red 10%, transparent)) {
   ::selection {
     background: color-mix(in srgb, var(--brand) 22%, transparent);
@@ -230,8 +230,8 @@ p {
   }
 }
 
-/* Slim, theme-aware scrollbars (standard properties only — Safari keeps
-   its native overlay bars, which is the right behavior there) */
+/* 纤细且跟随主题的滚动条（仅用标准属性 —— Safari 保留
+   其原生悬浮滚动条，这在它那里是更合适的行为） */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
@@ -241,7 +241,7 @@ p {
   scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
 }
 
-/* ---------- Navigation ---------- */
+/* ---------- 导航 ---------- */
 .site-nav {
   position: fixed;
   inset: 0 0 auto;
@@ -249,9 +249,9 @@ p {
   padding: 0.85rem 1rem;
   background: transparent;
   pointer-events: none;
-  /* Persistence is for DOM/state only. Keeping the glass navigation out of an
-     isolated view-transition snapshot avoids a rectangular backdrop-filter
-     raster appearing around the rounded pill. */
+  /* 持久化只针对 DOM 与状态。让玻璃导航不进入独立的
+     view-transition 快照，可以避免在圆角胶囊周围出现
+     矩形的 backdrop-filter 光栅。 */
   view-transition-name: none !important;
 }
 
@@ -302,8 +302,8 @@ p {
   z-index: 1;
 }
 
-/* Liquid glass: translucent tint with a light sweep, refraction-style gradient
-   rim and an inner glow. Browsers without backdrop-filter keep the solid pill. */
+/* 液态玻璃：半透明底色带一道扫过的流光、折射风格的渐变
+   描边和内部辉光。不支持 backdrop-filter 的浏览器保持实色胶囊。 */
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   .site-nav__pill {
     background: var(--glass-sheen), var(--glass-tint);
@@ -313,7 +313,7 @@ p {
     box-shadow: var(--glass-inner-glow), var(--shadow);
   }
 
-  /* Gradient rim — bright where light hits the top edge, fading below */
+  /* 渐变描边 —— 顶部受光处最亮，向下逐渐变淡 */
   .site-nav__pill::before {
     content: "";
     position: absolute;
@@ -328,7 +328,7 @@ p {
     pointer-events: none;
   }
 
-  /* Chips stay translucent so the glass reads through them */
+  /* 选项块保持半透明，让玻璃质感从底下透出来 */
   .site-nav__pill a:hover,
   .site-nav__pill .site-nav__icon:hover {
     background: color-mix(in srgb, var(--surface-muted) 62%, transparent);
@@ -369,9 +369,9 @@ p {
   background: var(--accent-soft);
 }
 
-/* A route fetch happens before Astro starts the visual swap. Reflect the click
-   immediately so the navigation never feels frozen while that preparation is
-   happening. aria-current is still updated only after the URL really changes. */
+/* 在 Astro 开始视觉切换之前会先进行路由请求。立即反映点击，
+   这样在准备进行期间导航绝不会给人卡住的感觉。
+   aria-current 仍然只在 URL 真正变化之后才更新。 */
 .site-nav__pill a.is-pending {
   color: var(--accent);
   background: var(--accent-soft);
@@ -468,7 +468,7 @@ p {
   color: var(--brand) !important;
 }
 
-/* ---------- Hero (intro left + picks right, vertically balanced) ---------- */
+/* ---------- 首屏（左侧简介 + 右侧精选，垂直方向平衡） ---------- */
 .hero {
   margin-bottom: 4.5rem;
   padding-top: 0.75rem;
@@ -504,7 +504,7 @@ p {
   letter-spacing: -0.03em;
 }
 
-/* Ink-gradient display titles — the type itself carries the depth */
+/* 墨色渐变展示标题 —— 文字本身自带层次纵深 */
 @supports (color: color-mix(in srgb, red 50%, transparent)) {
   .hero__title,
   .article__header h1,
@@ -552,7 +552,7 @@ p {
   text-transform: uppercase;
 }
 
-/* Text links (not buttons) */
+/* 文本链接（非按钮） */
 .text-link {
   display: inline-flex;
   align-items: center;
@@ -574,7 +574,7 @@ p {
   transform: translateX(3px);
 }
 
-/* "查看全部" link under a section list */
+/* 板块列表下方的"查看全部"链接 */
 .section__more {
   display: inline-flex;
   align-items: center;
@@ -598,7 +598,7 @@ p {
   transform: translateX(3px);
 }
 
-/* Icon social buttons */
+/* 图标式社交按钮 */
 .hero__social {
   display: inline-flex;
   align-items: center;
@@ -633,7 +633,7 @@ p {
   transform: translateY(0) scale(0.92);
 }
 
-/* ---------- Section headers ---------- */
+/* ---------- 板块标题 ---------- */
 .section {
   margin-top: 4rem;
 }
@@ -654,7 +654,7 @@ p {
   font-size: 0.98rem;
 }
 
-/* Title left, "view all" on the same baseline right */
+/* 标题在左，"查看全部"在同一基线右侧 */
 .section__header--row {
   display: flex;
   align-items: flex-end;
@@ -668,7 +668,7 @@ p {
   white-space: nowrap;
 }
 
-/* ---------- Hero picks (horizontal row below intro) ---------- */
+/* ---------- 首屏精选（简介下方的横向一排） ---------- */
 .hero__picks {
   margin-top: 2.5rem;
   padding-top: 1.6rem;
@@ -695,7 +695,7 @@ p {
   background: var(--brand);
 }
 
-/* Editorial picks: one lead story, a quiet list beside it */
+/* 编辑精选：一篇主打文章，旁边配一份安静的列表 */
 .picks {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
@@ -850,7 +850,7 @@ p {
   );
 }
 
-/* ---------- Post meta ---------- */
+/* ---------- 文章元信息 ---------- */
 .post-meta {
   display: flex;
   flex-wrap: wrap;
@@ -866,7 +866,7 @@ p {
   letter-spacing: 0.01em;
 }
 
-/* ---------- Post ledger (typographic rows: date · title · category) ---------- */
+/* ---------- 文章台账（排版式行：日期 · 标题 · 分类） ---------- */
 .post-list {
   display: flex;
   flex-direction: column;
@@ -876,8 +876,8 @@ p {
   position: relative;
 }
 
-/* Divider spans the content width; the hover block's rounded corners bleed
-   into the gutter (outside this line), so there's no notch. */
+/* 分隔线横跨内容宽度；悬停块的圆角会溢出到边距区域
+   （在这条线之外），因此不会出现缺口。 */
 .post-row + .post-row::before {
   content: "";
   position: absolute;
@@ -974,7 +974,7 @@ p {
   line-height: 1.6;
 }
 
-/* Compact rows (archive / category / tag): a pure index — title is the row */
+/* 紧凑行（归档 / 分类 / 标签）：纯索引 —— 标题本身就是整行 */
 .post-row--compact a {
   padding-block: 0.85rem;
 }
@@ -983,7 +983,7 @@ p {
   padding-top: 0.14rem;
 }
 
-/* ---------- Tags ---------- */
+/* ---------- 标签 ---------- */
 .tag-list {
   display: flex;
   flex-wrap: wrap;
@@ -1000,7 +1000,7 @@ p {
   font-weight: 600;
 }
 
-/* ---------- Taxonomy (open, borderless) ---------- */
+/* ---------- 分类体系（开放式、无边框） ---------- */
 .taxonomy-overview,
 .archive-summary {
   display: grid;
@@ -1090,7 +1090,7 @@ p {
   color: var(--accent);
 }
 
-/* Collapsible long tag tail — smooth height via grid-template-rows */
+/* 可折叠的超长标签尾部 —— 通过 grid-template-rows 实现平滑高度动画 */
 .term-more {
   display: grid;
   grid-template-rows: 0fr;
@@ -1136,20 +1136,20 @@ p {
   transform: rotate(180deg);
 }
 
-/* ---------- Generic content pages ---------- */
+/* ---------- 通用内容页面 ---------- */
 .archive-page {
   width: 100%;
   margin: 0 auto;
 }
 
-/* No TOC: a single, centered reading column (header + body). */
+/* 无目录：单一居中的阅读栏（页头 + 正文）。 */
 .article {
   width: min(100%, 44rem);
   margin: 0 auto;
 }
 
-/* With TOC: full-width masthead header, then content + sticky TOC sidebar
-   that together span the homepage width — no focus jump when entering. */
+/* 有目录：通栏大标题页头，随后是内容 + 粘性目录侧栏，
+   二者合起来与首页同宽 —— 进入时焦点不会跳动。 */
 .article--toc {
   width: min(100%, 68rem);
 }
@@ -1212,7 +1212,7 @@ p {
   justify-content: center;
 }
 
-/* ---------- Search ---------- */
+/* ---------- 搜索 ---------- */
 .search-box {
   margin-bottom: 1.5rem;
 }
@@ -1274,7 +1274,7 @@ p {
   font-size: 0.92rem;
 }
 
-/* ---------- Archive ---------- */
+/* ---------- 归档 ---------- */
 .archive-summary {
   margin-bottom: 2.25rem;
   grid-template-columns: 1fr;
@@ -1284,7 +1284,7 @@ p {
   margin-bottom: 1.5rem;
 }
 
-/* Year as a large outlined numeral in its own gutter, entries beside it */
+/* 年份以大号描边数字独占一栏，条目排列在旁边 */
 .archive-year {
   display: grid;
   grid-template-columns: 8.5rem minmax(0, 1fr);
@@ -1358,7 +1358,7 @@ p {
   color: var(--accent);
 }
 
-/* ---------- About page ---------- */
+/* ---------- 关于页面 ---------- */
 .about {
   width: 100%;
 }
@@ -1416,7 +1416,7 @@ p {
   color: var(--brand);
 }
 
-/* Quiet facts strip under the lead — anchors the page with a few numbers */
+/* 导语下方的低调数据条 —— 用几个数字为页面定下锚点 */
 .about__facts {
   display: flex;
   flex-wrap: wrap;
@@ -1457,7 +1457,7 @@ p {
   }
 }
 
-/* ---------- Projects directory ---------- */
+/* ---------- 项目列表 ---------- */
 .proj-section {
   margin-top: 3.25rem;
   padding-top: 1.7rem;
@@ -1628,7 +1628,7 @@ p {
   color: var(--brand);
 }
 
-/* ---------- Article ---------- */
+/* ---------- 文章 ---------- */
 .back-link {
   display: inline-flex;
   align-items: center;
@@ -1680,7 +1680,7 @@ p {
   box-shadow: 0 10px 26px rgba(20, 24, 32, 0.09);
 }
 
-/* Cover inside the prose column (TOC articles) — flush top, space below before h2 */
+/* 封面位于正文栏内（带目录的文章）—— 顶部平齐，其下与 h2 之间留出间距 */
 .article__main > .article__cover {
   margin-top: 0;
   margin-bottom: 2.2rem;
@@ -1724,7 +1724,7 @@ p {
   border-color: var(--brand);
 }
 
-/* Active: the rail stays one continuous line — only the text nudges right */
+/* 激活态：左侧竖线保持一条连续的线 —— 只有文字向右轻移 */
 .toc a.is-active {
   color: var(--brand);
   border-color: var(--brand);
@@ -1741,8 +1741,8 @@ p {
   padding-left: 2.03rem;
 }
 
-/* Progressive disclosure: a section's children stay tucked away until the
-   reader is inside that section (same language as the notes time index). */
+/* 渐进展示：某一节的子项保持收起，直到读者进入该节
+   （与随笔时间索引采用同样的设计语言）。 */
 .toc__sub {
   display: grid;
   grid-template-rows: 0fr;
@@ -1767,7 +1767,7 @@ p {
   opacity: 1;
 }
 
-/* ---------- Post content ---------- */
+/* ---------- 文章正文 ---------- */
 .post-content {
   font-size: 1.15rem;
   line-height: 1.8;
@@ -1869,7 +1869,7 @@ p {
   cursor: auto;
 }
 
-/* ---------- Reading progress + back to top ---------- */
+/* ---------- 阅读进度 + 返回顶部 ---------- */
 .reading-progress {
   position: fixed;
   inset: 0 0 auto 0;
@@ -1937,7 +1937,7 @@ p {
   transform: translateY(-1px) scale(0.95);
 }
 
-/* ---------- Image lightbox ---------- */
+/* ---------- 图片灯箱 ---------- */
 .lightbox {
   position: fixed;
   inset: 0;
@@ -2049,7 +2049,7 @@ p {
   color: var(--text-muted);
 }
 
-/* Decorative quote mark — reads clearly as a quote, not a heading bar */
+/* 装饰性引号 —— 一眼就能看出是引用，而不是标题竖条 */
 .post-content blockquote::before {
   content: "\201C";
   position: absolute;
@@ -2070,7 +2070,7 @@ p {
   margin-bottom: 0;
 }
 
-/* Tables read like a printed index: horizontal rules only, no cell grid */
+/* 表格呈现为印刷索引的样式：只有横向分隔线，没有单元格网格 */
 .post-content table {
   display: block;
   width: 100%;
@@ -2100,14 +2100,14 @@ p {
   border-bottom-color: var(--hairline);
 }
 
-/* ---------- Article footer ---------- */
+/* ---------- 文章页脚 ---------- */
 .article__footer {
   margin-top: 3.5rem;
   padding-top: 2.5rem;
   border-top: 1px solid var(--border);
 }
 
-/* Post navigation — directional strip, no card boxes */
+/* 文章导航 —— 带方向感的横条，不用卡片盒子 */
 .post-nav {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2193,7 +2193,7 @@ p {
   color: inherit;
 }
 
-/* Related articles — post-row style, no card boxes */
+/* 相关文章 —— 沿用文章行的样式，不用卡片盒子 */
 .related-posts {
   margin-top: 2.5rem;
 }
@@ -2271,7 +2271,7 @@ p {
   overflow: hidden;
 }
 
-/* ---------- Legacy shortcode blocks ---------- */
+/* ---------- 旧版短代码块 ---------- */
 .legacy-folding {
   padding: 0.9rem 1.1rem;
   border: 1px solid var(--border);
@@ -2335,7 +2335,7 @@ p {
   font-size: 0.86rem;
 }
 
-/* ---------- Responsive ---------- */
+/* ---------- 响应式 ---------- */
 @media (max-width: 860px) {
   main {
     width: min(100% - 1.75rem, 63rem);
@@ -2491,7 +2491,7 @@ p {
   }
 }
 
-/* ---------- Site footer ---------- */
+/* ---------- 站点页脚 ---------- */
 .site-footer {
   margin-top: 6rem;
   border-top: 1px solid var(--border);
@@ -2612,8 +2612,8 @@ p {
   color: var(--brand);
 }
 
-/* ---------- Notes (随笔) timeline ---------- */
-/* Three zones: date gutter · content · time index — fills the width, balanced */
+/* ---------- Notes（随笔）时间线 ---------- */
+/* 三个区域：日期栏 · 内容 · 时间索引 —— 铺满宽度且保持平衡 */
 .notes-layout--indexed {
   display: grid;
   grid-template-columns: minmax(0, 1fr) fit-content(9rem);
@@ -2626,7 +2626,7 @@ p {
   top: 6.5rem;
 }
 
-/* Time index: months smoothly expand for the year you're reading */
+/* 时间索引：正在阅读的年份，其月份平滑展开 */
 .notes-index__sub {
   display: grid;
   grid-template-rows: 0fr;
@@ -2662,7 +2662,7 @@ p {
   margin-top: 2.8rem;
 }
 
-/* Year break: label + hairline reaching right across the full width */
+/* 年份分隔：标签 + 向右延伸贯穿整个宽度的细线 */
 .notes-year__label {
   display: flex;
   align-items: center;
@@ -2682,7 +2682,7 @@ p {
   background: var(--border);
 }
 
-/* Delicate rail dividing the date gutter from the content */
+/* 分隔日期栏与内容区的纤细竖线 */
 .notes-feed::before {
   content: "";
   position: absolute;
@@ -2693,7 +2693,7 @@ p {
   background: var(--border);
 }
 
-/* Date in a left gutter, content on the right — uses the width, stays balanced */
+/* 日期置于左侧栏，内容在右侧 —— 充分利用宽度且保持平衡 */
 .note {
   position: relative;
   display: grid;
@@ -2707,7 +2707,7 @@ p {
   margin-top: 2.6rem;
 }
 
-/* Date dot on the rail, aligned with the entry's first line */
+/* 竖线上的日期圆点，与条目首行对齐 */
 .note::before {
   content: "";
   position: absolute;
@@ -2779,7 +2779,7 @@ p {
   margin-top: 1rem;
 }
 
-/* Collapse the date gutter on small screens */
+/* 在小屏幕上收起日期栏 */
 @media (max-width: 600px) {
   .notes-feed::before,
   .note::before {
@@ -2807,7 +2807,7 @@ p {
   color: var(--text-muted);
 }
 
-/* ---------- Selection quote comments ---------- */
+/* ---------- 划词引用评论 ---------- */
 .qc-pop {
   position: absolute;
   inset: 0 auto auto 0;
@@ -2839,7 +2839,7 @@ p {
   scale: 0.94;
 }
 
-/* Springy pop-in when the selection button appears */
+/* 划词按钮出现时的弹性弹入动画 */
 @media (prefers-reduced-motion: no-preference) {
   .qc-pop:not([hidden]) {
     animation: qc-pop-in 0.34s var(--ease-spring) both;
@@ -2854,7 +2854,7 @@ p {
   }
 }
 
-/* ---------- Custom comments (Twikoo backend, our own UI) ---------- */
+/* ---------- 自定义评论（Twikoo 后端，自建 UI） ---------- */
 .cbox {
   width: min(100%, 46rem);
   margin-top: 3.5rem;
@@ -3018,7 +3018,7 @@ p {
   translate: 0 0;
 }
 
-/* Accent buttons carry a whisper of light from above — Apple-style depth */
+/* 强调按钮带有一丝来自上方的光 —— Apple 式的立体感 */
 .cform__send,
 .search-box button,
 .qc-pop {
@@ -3193,7 +3193,7 @@ p {
   color: var(--brand);
 }
 
-/* ---------- Motion: scroll reveal + theme crossfade ---------- */
+/* ---------- 动效：滚动显现 + 主题交叉淡入 ---------- */
 @media (prefers-reduced-motion: no-preference) {
   .js :is(
     .hero__intro > *, .hero__picks,
@@ -3222,10 +3222,10 @@ p {
     transform: translateY(1.25rem);
   }
 
-  /* Masthead content settles into focus — blur lifts as it rises.
-     (.js.js matches the (0,3,0) specificity of the main reveal selector —
-     it contains `.article__main > .article__cover` — so this later rule
-     wins and adds `filter` to the transition.) */
+  /* 页头内容逐渐聚焦 —— 上升时模糊随之消散。
+     （.js.js 与主显现选择器具有相同的 (0,3,0) 特异性 ——
+     它包含 `.article__main > .article__cover` —— 因此后写的这条
+     规则胜出，并在 transition 中加入 `filter`。） */
   .js.js :is(.hero__intro > *, .article__header > *) {
     transition: opacity var(--t-slow) var(--ease-out-soft),
       transform var(--t-slow) var(--ease-out-soft),
@@ -3238,7 +3238,7 @@ p {
   }
 }
 
-/* Newly rendered comments cascade in (browsers with @starting-style) */
+/* 新渲染的评论依次级联浮现（支持 @starting-style 的浏览器） */
 @media (prefers-reduced-motion: no-preference) {
   .citem {
     transition: opacity 0.55s var(--ease-out-soft), translate 0.55s var(--ease-out-soft);
@@ -3268,7 +3268,7 @@ p {
   }
 }
 
-/* Article images develop in as the bytes arrive */
+/* 文章图片随字节加载逐渐显影 */
 @media (prefers-reduced-motion: no-preference) {
   .js .post-content img:not(.legacy-inline-image) {
     opacity: 0.001;
@@ -3282,11 +3282,11 @@ p {
   }
 }
 
-/* ---------- Motion: client-side navigation ---------- */
-/* Astro's documented pattern is used here: disable the page-wide transition
-   on <html>, then animate only the named route content. This keeps persistent
-   glass UI out of an opacity layer and uses fade-through (not crossfade), so
-   old and new text are never legible at the same time. */
+/* ---------- 动效：客户端路由导航 ---------- */
+/* 这里采用 Astro 官方文档给出的模式：在 <html> 上禁用整页过渡，
+   然后只对命名的路由内容做动画。这样持久存在的玻璃 UI 不会进入
+   不透明度图层，并采用穿越式淡入淡出（而非交叉淡化），
+   因此新旧文字绝不会同时清晰可读。 */
 @keyframes blogRouteOut {
   from {
     opacity: 1;
@@ -3314,8 +3314,8 @@ p {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  /* Astro's fallback runs the old and new phases sequentially. The delay is
-     only needed when native View Transitions run both snapshots together. */
+  /* Astro 的降级方案会依次执行旧、新两个阶段。只有当原生
+     View Transitions 同时运行两个快照时才需要这个延迟。 */
   html[data-astro-transition-fallback='new'] main {
     animation-delay: 0ms !important;
   }
@@ -3325,17 +3325,17 @@ p {
   }
 }
 
-/* Persist playback and navigation state without creating isolated snapshots
-   for translucent/backdrop-filter elements. The root snapshot is disabled; the
-   only animated snapshot is #main (page-content). */
+/* 保持播放与导航状态，而不为半透明/backdrop-filter 元素创建隔离的
+   快照。根快照已被禁用；唯一执行动画的快照是 #main
+   （page-content）。 */
 .music-player {
   view-transition-name: none !important;
 }
 
-/* Theme switch: the new theme sweeps out of the toggle as an expanding circle.
-   BaseLayout injects exact literal percentages for the button center and cover
-   radius. Relative coordinates survive high-DPI view-transition rasterization
-   without the half-size clip and final full-screen snap caused by px values. */
+/* 主题切换：新主题以一个不断扩张的圆从切换按钮中扫出。
+   BaseLayout 会为按钮中心与覆盖半径注入精确的字面量百分比。
+   相对坐标在高 DPI 的 view-transition 光栅化下依然有效，
+   不会出现 px 值导致的半尺寸裁剪和最终全屏跳变。 */
 html.theme-vt::view-transition-old(root),
 html.theme-vt::view-transition-new(root) {
   mix-blend-mode: normal;
@@ -3348,29 +3348,29 @@ html.theme-vt::view-transition-old(root) {
 }
 
 html.theme-vt::view-transition-new(root) {
-  /* A reveal circle needs a steady radius. The shared ease-out curve reaches
-     97% by the halfway point, which makes the edge appear to pause before the
-     view-transition snapshot is removed. */
+  /* 揭示圆需要一个稳定的半径。共用的 ease-out 曲线到中点时
+     就已达到 97%，这会让圆的边缘在 view-transition 快照被移除
+     之前看起来像停顿了一下。 */
   animation: theme-reveal 0.52s linear both;
   opacity: 1;
   z-index: 2;
 }
 
-/* The theme switch fires element-level color transitions (links, cards, …)
-   which all finish in a burst around 250ms. That main-thread style/reflow
-   wave starves the clip-path reveal — also main-thread driven — dropping its
-   late frames, which reads as "smooth to halfway, then pop". Freeze those
-   transitions for the reveal's duration: the root snapshot already carries
-   the new theme, so the DOM snapping to final colors is invisible. */
+/* 主题切换会触发元素级的颜色过渡（链接、卡片等），
+   它们都在 250ms 左右集中完成。这波主线程样式/回流
+   会挤占同样由主线程驱动的 clip-path 揭示动画，使其丢掉
+   后半段的帧，看起来就是"顺滑到一半，然后突然跳变"。
+   在揭示动画期间冻结这些过渡：根快照已经携带新主题，
+   因此 DOM 直接跳到最终颜色是察觉不到的。 */
 html.theme-vt *,
 html.theme-vt *::before,
 html.theme-vt *::after {
   transition: none !important;
 }
 
-/* The route router normally isolates these persistent elements into their own
-   snapshots. A theme reveal needs one coherent canvas, so fold them back into
-   the root snapshot only for this transition. */
+/* 路由切换通常会把持久元素隔离到各自的快照中。
+   而主题揭示需要一整块连贯的画布，因此仅在这次过渡中
+   把它们并回根快照。 */
 html.theme-vt :is(main, .site-nav, .site-nav__pill, .music-player) {
   view-transition-name: none !important;
 }
@@ -3416,8 +3416,8 @@ html.theme-vt::view-transition-new(theme-toggle) {
   }
 }
 
-/* Lightweight fallback: animate one composited layer instead of forcing every
-   node on a long article to run four simultaneous color transitions. */
+/* 轻量降级方案：只动画一个合成层，而不是强迫长文章里的
+   每个节点同时运行四个颜色过渡。 */
 html.theme-anim body {
   animation: theme-settle 0.36s var(--ease-out-soft) both;
 }
