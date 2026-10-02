@@ -1,19 +1,15 @@
 ---
 import Icon from './Icon.astro';
 import { site } from '../lib/posts';
+import { getFooter } from '../lib/site-content';
 
+const footer = getFooter();
 const year = new Date().getFullYear();
 
-const channels = [
-  { name: 'Bilibili', icon: 'bilibili', href: 'https://space.bilibili.com/46377861' },
-  { name: 'YouTube', icon: 'youtube', href: 'https://www.youtube.com/channel/UCUuwwXFGK8Z3OBrq6PzkmUg' },
-  { name: 'RSS', icon: 'rss', href: '/rss.xml' },
-];
-
-const groups = [
-  { name: 'QQ 交流群', icon: 'qq', href: '' },
-  { name: '微信交流群', icon: 'wechat', href: '' },
-];
+// 版权文字支持 {year} / {author} 占位符，避免后台把年份写死。
+const copyright = footer.copyright
+  .replaceAll('{year}', String(year))
+  .replaceAll('{author}', site.author);
 ---
 
 <footer class="site-footer">
@@ -28,47 +24,44 @@ const groups = [
       />
       <div class="site-footer__id-text">
         <strong>{site.author}</strong>
-        <span>AI · Code · Web</span>
+        <span>{footer.tagline}</span>
       </div>
     </div>
 
     <nav class="site-footer__links" aria-label="页脚链接">
-      {channels.map(({ name, icon, href }) => (
-        <a
-          href={href}
-          target={href.startsWith('http') ? '_blank' : undefined}
-          rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
-        >
-          <Icon name={icon} size={15} />
-          {name}
-        </a>
-      ))}
-      <span class="site-footer__sep" aria-hidden="true"></span>
-      {groups.map(({ name, icon, href }) => (
-        href ? (
-          <a
-            href={href}
-            target={href.startsWith('http') ? '_blank' : undefined}
-            rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
-          >
-            <Icon name={icon} size={15} />
-            {name}
-          </a>
-        ) : (
-          <span class="site-footer__item">
-            <Icon name={icon} size={15} />
-            {name}
-          </span>
-        )
-      ))}
+      {footer.links.map((item, index) => {
+        // 分隔线沿用「外部链接 | 社群」的分组语义：插在第一条无链接（纯文字）项前
+        const showSep = !item.href && index > 0 && footer.links.slice(0, index).some((l) => l.href);
+        return (
+          <>
+            {showSep && <span class="site-footer__sep" aria-hidden="true" />}
+            {item.href ? (
+              <a
+                href={item.href}
+                target={item.href.startsWith('http') ? '_blank' : undefined}
+                rel={item.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+              >
+                {item.icon && <Icon name={item.icon} size={15} />}
+                {item.label}
+              </a>
+            ) : (
+              <span class="site-footer__item">
+                {item.icon && <Icon name={item.icon} size={15} />}
+                {item.label}
+              </span>
+            )}
+          </>
+        );
+      })}
     </nav>
   </div>
 
   <div class="site-footer__bar">
-    <span>© {year} {site.author}</span>
+    <span>{copyright}</span>
     <span aria-hidden="true">·</span>
     <a href={site.url}>{site.url.replace('https://', '')}</a>
     <span aria-hidden="true">·</span>
-    <span>由 <a href="https://astro.build" target="_blank" rel="noopener noreferrer">Astro</a> 构建</span>
+    {/* 归属文字在后台保存时已做白名单净化，此处按含链接的富文本渲染 */}
+    <span set:html={footer.attribution} />
   </div>
 </footer>

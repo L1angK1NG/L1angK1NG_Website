@@ -18,22 +18,19 @@
 </div>
 
 <style>
-  /* 脚本就绪后才隐藏系统光标（JS 加类），脚本不可用时浏览器保持默认光标 */
+  /* 脚本就绪后才隐藏系统光标（JS 加类），脚本不可用时浏览器保持默认光标。
+     用「全部元素 + !important」而不是逐类列举：全局样式里的 cursor 声明
+     （如导航图标按钮的 pointer、文章图片的 zoom-in）特异性更高，逐类列举
+     会被压过，导致悬停部分按钮时系统光标重新露出来。 */
   :global(html.sc-on),
-  :global(html.sc-on a),
-  :global(html.sc-on button),
-  :global(html.sc-on label),
-  :global(html.sc-on summary),
-  :global(html.sc-on select),
-  :global(html.sc-on [role='button']),
-  :global(html.sc-on [role='link']) {
-    cursor: none;
+  :global(html.sc-on *) {
+    cursor: none !important;
   }
   /* 文本输入场景必须保留系统文本光标，否则无法看到插入点位置 */
   :global(html.sc-on input:is(:not([type='button']):not([type='submit']):not([type='checkbox']):not([type='radio']))),
   :global(html.sc-on textarea),
   :global(html.sc-on [contenteditable]) {
-    cursor: text;
+    cursor: text !important;
   }
 
   #smooth-cursor {

@@ -1,0 +1,89 @@
+---
+import { marked } from 'marked';
+import Icon from '../../components/Icon.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getProjects, type ProjectItem } from '../../lib/site-content';
+
+// 构建时生成项目详情页：数据来自后台「项目」模块维护的 data/projects.json，
+// Markdown 正文在此渲染为 HTML（管理员自己撰写的内容）。
+export function getStaticPaths() {
+  return getProjects().map((project) => ({
+    params: { slug: project.slug },
+    props: { project },
+  }));
+}
+
+const { project } = Astro.props as { project: ProjectItem };
+const contentHtml = String(
+  marked.parse(project.content ?? '', { async: false, gfm: true, breaks: false }),
+);
+---
+
+<BaseLayout
+  title={project.title}
+  description={project.subtitle || project.description || `${project.title} - 项目详情`}
+  pageClass="article-page"
+  image={project.cover || undefined}
+>
+  <article class="article">
+    <a class="back-link" href="/projects/">
+      <Icon name="arrow-right" size={16} class="back-link__arrow" />
+      返回项目列表
+    </a>
+
+    <header class="article__header">
+      <div class="post-meta">
+        {project.status && <span>{project.status}</span>}
+        {project.tech.length > 0 && <span>{project.tech.join(' · ')}</span>}
+      </div>
+      <h1>{project.title}</h1>
+      {(project.subtitle || project.description) && (
+        <p>{project.subtitle || project.description}</p>
+      )}
+      {project.tech.length > 0 && (
+        <div class="tag-list" aria-label="技术栈">
+          {project.tech.map((t) => <span>{t}</span>)}
+        </div>
+      )}
+      {project.links.length > 0 && (
+        <div class="proj-links">
+          {project.links.map((link) => (
+            <a class="text-link" href={link.url} target="_blank" rel="noopener noreferrer">
+              {link.label}
+              <Icon name="arrow-up-right" size={18} />
+            </a>
+          ))}
+        </div>
+      )}
+      {project.cover && (
+        <img
+          class="article__cover"
+          src={project.cover}
+          alt=""
+          loading="eager"
+          fetchpriority="high"
+          referrerpolicy="no-referrer"
+        />
+      )}
+    </header>
+
+    <div class="article__body">
+      <div class="article__main">
+        {contentHtml.trim() ? (
+          <div class="post-content" set:html={contentHtml} />
+        ) : (
+          project.description && <div class="post-content"><p>{project.description}</p></div>
+        )}
+      </div>
+    </div>
+  </article>
+</BaseLayout>
+
+<style>
+  .proj-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin-top: 1.1rem;
+  }
+</style>

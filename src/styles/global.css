@@ -1,3 +1,15 @@
+/* 全站字体：霞鹜文楷等宽（LXGW WenKai Mono，基于 Klee One 的开源中文字体）。
+   自托管于 /fonts/；font-display: swap 让字体就绪前先用回退字体渲染，避免白屏。
+   只有一个 Medium 字重文件：font-weight 声明为 normal，600 以上的粗体请求由
+   浏览器仿粗渲染，保留标题与正文的层级对比。 */
+@font-face {
+  font-family: "LXGW WenKai Mono";
+  src: url("/fonts/LXGWWenKaiMono-Medium.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
   --bg: #f8f7f4;
@@ -115,8 +127,17 @@ html[data-theme="dark"] {
   box-sizing: border-box;
 }
 
+/* 表单控件默认使用 UA 字体而不继承站点字体，统一改为继承
+   （各控件自身的 font/font-size 规则特异性更高，不受影响）。 */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
 html {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC",
+  font-family: "LXGW WenKai Mono", system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   line-height: 1.7;
@@ -433,32 +454,52 @@ p {
   place-items: center;
 }
 
-.theme-toggle :is(.theme-toggle__moon, .theme-toggle__sun) {
+.theme-toggle :is(.theme-toggle__moon, .theme-toggle__sun, .theme-toggle__auto) {
   grid-area: 1 / 1;
   transition: opacity 0.26s var(--ease-out), rotate 0.46s var(--ease-out-soft),
     scale 0.4s var(--ease-out-soft) !important;
   will-change: opacity, rotate, scale;
 }
 
-.theme-toggle .theme-toggle__moon {
+/* 图标显示「当前所处模式」：浅色（默认，含无 JS 兜底）→ 太阳，
+   深色 → 月亮，跟随系统 → 显示器。模式由 <html data-theme-mode> 标记
+   （head 内联脚本在首帧前写入、换页后重写），首帧图标就不会闪错。
+   点击效果见 BaseLayout 的循环：跟随系统 → 相反主题；浅色 ⇄ 深色；
+   深色 → 恢复跟随系统。 */
+.theme-toggle .theme-toggle__sun {
   opacity: 1;
   rotate: 0deg;
   scale: 1;
 }
 
-.theme-toggle .theme-toggle__sun {
+.theme-toggle .theme-toggle__moon,
+.theme-toggle .theme-toggle__auto {
   opacity: 0;
   rotate: -78deg;
   scale: 0.56;
 }
 
-.theme-toggle[data-theme-icon="dark"] .theme-toggle__moon {
+/* 当前为深色模式：亮月亮 */
+html[data-theme-mode="dark"] .theme-toggle .theme-toggle__sun {
   opacity: 0;
   rotate: 72deg;
   scale: 0.56;
 }
 
-.theme-toggle[data-theme-icon="dark"] .theme-toggle__sun {
+html[data-theme-mode="dark"] .theme-toggle .theme-toggle__moon {
+  opacity: 1;
+  rotate: 0deg;
+  scale: 1;
+}
+
+/* 当前为跟随系统：亮显示器 */
+html[data-theme-mode="auto"] .theme-toggle .theme-toggle__sun {
+  opacity: 0;
+  rotate: 72deg;
+  scale: 0.56;
+}
+
+html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
   opacity: 1;
   rotate: 0deg;
   scale: 1;
@@ -502,6 +543,12 @@ p {
   font-size: clamp(2.1rem, 5vw, 3.4rem);
   font-weight: 800;
   letter-spacing: -0.03em;
+  /* 渐变裁字修复：background-clip: text 只绘制元素盒内的字形，行高 1.16 时
+     g/y/p 等字母的下伸部超出盒子，字尾被裁平。向下扩一点背景绘制区，
+     再用等量负外边距抵消布局位移（hero__intro 是 flex 容器，外边距不折叠，
+     位移恰好归零）。 */
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
 }
 
 /* 墨色渐变展示标题 —— 文字本身自带层次纵深 */
@@ -1171,8 +1218,10 @@ p {
 }
 
 .page-header h1 {
-  margin: 0.5rem 0 0.7rem;
+  margin: 0.5rem 0 calc(0.7rem - 0.14em);
   font-size: clamp(2rem, 5vw, 3rem);
+  /* 同 .hero__title：扩展渐变绘制区防止字尾被裁，下边距同步扣除保持间距 */
+  padding-bottom: 0.14em;
 }
 
 .page-header p:last-child {
@@ -1394,6 +1443,15 @@ p {
   font-weight: 780;
   line-height: 1.28;
   letter-spacing: -0.03em;
+  /* 同 .hero__title：扩展渐变绘制区防止字尾被裁 */
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}
+
+/* 抵消 about__lead 负下边距在 margin 折叠中吞掉的间距
+   （用标题自身的 clamp 字号换算，任意视口下都精确归零） */
+.about__lead + .about__sub {
+  margin-top: calc(1.4rem + 0.14 * clamp(2rem, 4.4vw, 3.1rem));
 }
 
 .about__lead em {
@@ -1656,6 +1714,14 @@ p {
   margin-top: 0.8rem;
   font-size: clamp(2rem, 5.5vw, 3.2rem);
   letter-spacing: -0.025em;
+  /* 同 .hero__title：扩展渐变绘制区防止字尾被裁 */
+  padding-bottom: 0.14em;
+  margin-bottom: -0.14em;
+}
+
+/* 抵消标题负下边距在 margin 折叠中吞掉的间距（用标题自身 clamp 字号换算） */
+.article__header h1 + p {
+  margin-top: calc(1.1rem + 0.14 * clamp(2rem, 5.5vw, 3.2rem));
 }
 
 .article__header > p {
@@ -2027,7 +2093,8 @@ p {
 }
 
 .post-content code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+  /* 文楷等宽本身就是等宽字体，代码块直接用它，缺字时才落到系统等宽 */
+  font-family: "LXGW WenKai Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", monospace;
   font-size: 0.9em;
 }
@@ -2055,7 +2122,6 @@ p {
   position: absolute;
   top: 0.45rem;
   left: 0.85rem;
-  font-family: Georgia, "Times New Roman", serif;
   font-size: 1.9rem;
   line-height: 1;
   color: var(--brand);
@@ -2484,10 +2550,19 @@ p {
     width: 100%;
     justify-content: center;
     gap: 0;
+    /* 项目/导航/友链加入后窄屏允许横向滑动，避免压缩变形 */
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .site-nav__pill::-webkit-scrollbar {
+    display: none;
   }
 
   .site-nav__pill a {
     padding-inline: 0.7rem;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 }
 

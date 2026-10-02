@@ -1,4 +1,5 @@
 ---
+import AnnouncementBar from '../components/AnnouncementBar.astro';
 import Footer from '../components/Footer.astro';
 import SmoothCursor from '../components/SmoothCursor.astro';
 import MusicPlayer from '../components/MusicPlayer.astro';
@@ -123,17 +124,24 @@ const routeMotion = {
         const storageKey = 'blog-theme';
         const lightColor = '#f8f7f4';
         const darkColor = '#0e1116';
-        const getTheme = () => {
+        // 主题模式三态：'auto'（跟随系统，默认）/ 'light' / 'dark'。
+        const getMode = () => {
           try {
             const stored = localStorage.getItem(storageKey);
-            if (stored) return stored;
+            if (stored === 'light' || stored === 'dark' || stored === 'auto') return stored;
           } catch {
           }
-          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          return 'auto';
         };
+        const getSystemTheme = () =>
+          window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         const restoreTheme = () => {
-          const theme = getTheme();
+          const mode = getMode();
+          const theme = mode === 'auto' ? getSystemTheme() : mode;
           document.documentElement.dataset.theme = theme;
+          // 模式也写在 <html> 上：主题按钮图标的 CSS 以它为唯一依据，
+          // 在首帧前写入保证图标不会先闪错再纠正。
+          document.documentElement.dataset.themeMode = mode;
           document.documentElement.classList.add('js');
           document.querySelector('#theme-color')?.setAttribute(
             'content',
@@ -156,6 +164,7 @@ const routeMotion = {
       </div>
     )}
     <Nav />
+    <AnnouncementBar />
     <main id="main" transition:name="page-content" transition:animate={routeMotion}>
       <slot />
     </main>
@@ -282,43 +291,51 @@ const routeMotion = {
         const darkColor = '#0e1116';
         const button = document.querySelector('[data-theme-toggle]');
         const themeColor = document.querySelector('#theme-color');
-        const getStoredTheme = () => {
-          try {
-            return localStorage.getItem(storageKey);
-          } catch {
-            return null;
-          }
-        };
-        const setStoredTheme = (theme) => {
-          try {
-            localStorage.setItem(storageKey, theme);
-          } catch {
-          }
-        };
 
+        // 三态主题：auto（跟随系统，默认）→ light → dark 循环。auto 模式下
+        // 系统切换深浅色时实时跟随；手动选择后固定，直到再切回 auto。
+        const getMode = () => {
+          try {
+            const stored = localStorage.getItem(storageKey);
+            if (stored === 'light' || stored === 'dark' || stored === 'auto') return stored;
+          } catch {
+          }
+          return 'auto';
+        };
+        const setStoredMode = (mode) => {
+          try {
+            localStorage.setItem(storageKey, mode);
+          } catch {
+          }
+        };
         const getSystemTheme = () =>
           window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const effectiveTheme = (mode) => (mode === 'auto' ? getSystemTheme() : mode);
 
-        const applyTheme = (theme, persist = true) => {
+        const applyMode = (mode, persist = true) => {
+          const theme = effectiveTheme(mode);
           document.documentElement.dataset.theme = theme;
+          // 与 head 内的 restoreTheme 一致：模式驱动按钮图标，首帧即正确
+          document.documentElement.dataset.themeMode = mode;
           themeColor?.setAttribute('content', theme === 'dark' ? darkColor : lightColor);
 
           if (button) {
-            button.dataset.themeIcon = theme;
-            button.setAttribute(
-              'aria-label',
-              theme === 'dark' ? '切换到浅色模式' : '切换到深色模式',
-            );
-            button.setAttribute('aria-pressed', String(theme === 'dark'));
+            // 图标显示「当前模式」（太阳=浅色 / 月亮=深色 / 显示器=跟随系统），
+            // 文字提示说明当前状态与点击效果。
+            const label =
+              mode === 'auto'
+                ? `主题跟随系统（当前${theme === 'dark' ? '深色' : '浅色'}），点击切换到${theme === 'dark' ? '浅色' : '深色'}`
+                : mode === 'light'
+                  ? '浅色模式，点击切换到深色'
+                  : '深色模式，点击恢复跟随系统';
+            button.setAttribute('aria-label', label);
+            button.setAttribute('title', label);
           }
 
           if (persist) {
-            setStoredTheme(theme);
+            setStoredMode(mode);
           }
         };
-
-        const currentTheme = () =>
-          document.documentElement.dataset.theme || getStoredTheme() || getSystemTheme();
 
         // 注入字面百分比数值，而不是 px 值或动态变量。
         // Chrome 会按设备像素密度栅格化 view-transition 快照；
@@ -334,14 +351,20 @@ const routeMotion = {
             return styleEl;
           })();
 
-        applyTheme(currentTheme(), false);
+        applyMode(getMode(), false);
 
         const motionOK = window.matchMedia('(prefers-reduced-motion: no-preference)').matches;
         let themeAnimTimer;
         let themeSwitching = false;
+        // 循环：跟随系统 → 直接切到与当前显示相反的主题（点击必有可见变化）；
+        // 手动浅色 → 深色；手动深色 → 恢复跟随系统。
+        const NEXT_MODE = { light: 'dark', dark: 'auto' };
         button?.addEventListener('click', () => {
           if (themeSwitching) return;
-          const next = currentTheme() === 'dark' ? 'light' : 'dark';
+          const mode = getMode();
+          const next = mode === 'auto'
+            ? (effectiveTheme('auto') === 'dark' ? 'light' : 'dark')
+            : NEXT_MODE[mode] ?? 'auto';
           const root = document.documentElement;
 
           // 新主题以扩张的圆形从切换按钮中扫出。
@@ -370,7 +393,7 @@ const routeMotion = {
             button.classList.add('is-switching');
             themeRevealStyle.textContent = `@keyframes theme-reveal { from { clip-path: circle(0 at ${xPercent.toFixed(4)}% ${yPercent.toFixed(4)}%); } to { clip-path: circle(${radiusPercent.toFixed(4)}% at ${xPercent.toFixed(4)}% ${yPercent.toFixed(4)}%); } }`;
             root.classList.add('theme-vt');
-            const vt = document.startViewTransition(() => applyTheme(next));
+            const vt = document.startViewTransition(() => applyMode(next));
             vt.finished
               .catch(() => {})
               .finally(() => {
@@ -381,7 +404,7 @@ const routeMotion = {
             return;
           }
 
-          applyTheme(next);
+          applyMode(next);
           if (motionOK) {
             root.classList.remove('theme-anim');
             void root.offsetWidth;
@@ -391,9 +414,10 @@ const routeMotion = {
           }
         }, { signal });
 
+        // 跟随系统模式下，系统切换深浅色（如定时夜览）时页面实时跟随。
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-          if (!getStoredTheme()) {
-            applyTheme(getSystemTheme(), false);
+          if (getMode() === 'auto') {
+            applyMode('auto', false);
           }
         }, { signal });
       })();
@@ -629,6 +653,35 @@ const routeMotion = {
             }
           })
           .catch(() => {});
+      })();
+    </script>
+    <script is:inline>
+      // 访问统计打点：每次页面加载（含 ClientRouter 换页后的 astro:page-load）
+      // 向后台上报路径与标题，用于总访问量 / 文章排行 / 归属地统计。
+      // 失败静默，绝不影响浏览。
+      (() => {
+        let lastPath = '';
+        let lastAt = 0;
+        const track = () => {
+          const path = window.location.pathname;
+          // 短时间内同路径重复触发（换页动画回跳）不重复计数。
+          const now = Date.now();
+          if (path === lastPath && now - lastAt < 3000) return;
+          lastPath = path;
+          lastAt = now;
+          try {
+            fetch('/api/public/view', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path, title: document.title }),
+              keepalive: true,
+            }).catch(() => {});
+          } catch {
+            /* 打点失败静默 */
+          }
+        };
+        track();
+        document.addEventListener('astro:page-load', track);
       })();
     </script>
     <script is:inline>

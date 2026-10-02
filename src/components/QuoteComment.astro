@@ -11,7 +11,10 @@ const { selector = '.post-content' } = Astro.props;
 <div data-qc-root data-qc-selector={selector} hidden></div>
 
 <script>
-  const commentsEnabled = Boolean(import.meta.env.PUBLIC_TWIKOO_ENV_ID);
+  // 评论默认启用（内置 Twikoo 协议后端），引用按钮随之常开；
+  // 只有显式配置 PUBLIC_TWIKOO_ENV_ID="" 空串想整体停用时才隐藏。
+  const commentsEnabled =
+    import.meta.env.PUBLIC_TWIKOO_ENV_ID === undefined || Boolean(import.meta.env.PUBLIC_TWIKOO_ENV_ID);
   let activeRoot = null;
   let cleanup = () => {};
 

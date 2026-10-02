@@ -11,6 +11,8 @@ const { name, size = 20, class: className, strokeWidth = 1.75 } = Astro.props;
 const icons: Record<string, string> = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  // 主题「跟随系统」图标：显示器（表示由系统偏好决定深浅色）
+  monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
   'arrow-right': '<path d="M5 12h14M13 6l6 6-6 6"/>',
   'arrow-up-right': '<path d="M7 17 17 7M8 7h9v9"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',

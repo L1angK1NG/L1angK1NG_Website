@@ -1,0 +1,136 @@
+---
+// 公告栏：从后台「公告」模块实时拉取启用中的公告，顶部横幅展示，
+// 可关闭（关闭状态记在 localStorage，同一公告不再重复打扰）。
+---
+
+<div class="announce" data-announce hidden>
+  <div class="announce__inner">
+    <span class="announce__badge" aria-hidden="true">公告</span>
+    <div class="announce__body" data-announce-body></div>
+    <button type="button" class="announce__close" data-announce-close aria-label="关闭公告">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+        <path d="M6 6l12 12M18 6 6 18" />
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  // 公告为运行时数据：每次进页面拉取一次，渲染最新一条启用中的公告。
+  const DISMISS_KEY = 'blog-announce-dismissed';
+
+  const initAnnounce = () => {
+    const bar = document.querySelector<HTMLElement>('[data-announce]');
+    if (!bar || bar.dataset.ready === '1') return;
+    bar.dataset.ready = '1';
+
+    const body = bar.querySelector<HTMLElement>('[data-announce-body]');
+    const closeBtn = bar.querySelector<HTMLButtonElement>('[data-announce-close]');
+
+    const dismissed = new Set<string>(
+      (() => {
+        try {
+          const raw = JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]');
+          return Array.isArray(raw) ? raw.map(String) : [];
+        } catch {
+          return [];
+        }
+      })(),
+    );
+
+    fetch('/api/public/announcements')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load fail'))))
+      .then((data: { items?: Array<{ id: string; title: string; content: string; link?: string }> }) => {
+        const item = (data.items ?? []).find((a) => a.id && !dismissed.has(a.id));
+        if (!item || !body) return;
+        const label = [item.title, item.content].filter(Boolean).join('：');
+        if (item.link) {
+          const a = document.createElement('a');
+          a.href = item.link;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = label;
+          body.append(a);
+        } else {
+          body.textContent = label;
+        }
+        bar.hidden = false;
+        closeBtn?.addEventListener('click', () => {
+          bar.hidden = true;
+          dismissed.add(item.id);
+          try {
+            localStorage.setItem(DISMISS_KEY, JSON.stringify([...dismissed].slice(-20)));
+          } catch {
+            /* 存储不可用时静默 */
+          }
+        });
+      })
+      .catch(() => {
+        /* 公告拉取失败不影响页面 */
+      });
+  };
+
+  initAnnounce();
+  document.addEventListener('astro:page-load', initAnnounce);
+</script>
+
+<style>
+  .announce {
+    width: min(100% - 2.5rem, 63rem);
+    margin: 0 auto;
+    padding-top: 7rem;
+  }
+  .home-page .announce {
+    padding-top: 7.5rem;
+  }
+  .announce__inner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.62rem 1.15rem;
+    border: 1px solid color-mix(in srgb, var(--brand) 26%, var(--border));
+    border-radius: 999px;
+    background: var(--brand-soft);
+    font-size: 0.9rem;
+  }
+  .announce__badge {
+    flex-shrink: 0;
+    padding: 0.1rem 0.62rem;
+    border-radius: 999px;
+    background: var(--brand);
+    color: #fff;
+    font-size: 0.76rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+  }
+  .announce__body {
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .announce__body a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .announce__close {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .announce__close:hover {
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+    color: var(--text);
+  }
+</style>

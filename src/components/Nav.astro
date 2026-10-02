@@ -19,8 +19,11 @@ const isCurrent = (href: string) =>
   <nav class="site-nav__pill" aria-label="主导航">
     <span class="site-nav__indicator" aria-hidden="true"></span>
     <a href="/" class:list={[isCurrent('/') && 'is-current']} data-nav-route>首页</a>
+    <a href="/projects/" class:list={[isCurrent('/projects/') && 'is-current']} data-nav-route>项目</a>
     <a href="/notes/" class:list={[isCurrent('/notes/') && 'is-current']} data-nav-route>随笔</a>
     <a href="/archive/" class:list={[isCurrent('/archive/') && 'is-current']} data-nav-route>归档</a>
+    <a href="/nav/" class:list={[isCurrent('/nav/') && 'is-current']} data-nav-route>导航</a>
+    <a href="/friends/" class:list={[isCurrent('/friends/') && 'is-current']} data-nav-route>友链</a>
     <a href="/about/" class:list={[isCurrent('/about/') && 'is-current']} data-nav-route>关于</a>
     <span class="site-nav__sep" aria-hidden="true"></span>
     {siteConfig.githubRepo && (
@@ -44,9 +47,12 @@ const isCurrent = (href: string) =>
     >
       <Icon name="search" size={18} />
     </a>
-    <button type="button" class="theme-toggle site-nav__icon" data-theme-toggle aria-label="切换深色模式">
-      <Icon name="moon" size={18} class="theme-toggle__moon" />
+    <!-- 主题按钮：图标显示当前模式（太阳=浅色 / 月亮=深色 / 显示器=跟随系统），
+         由 <html data-theme-mode> 驱动；点击循环与文字提示见 BaseLayout 脚本 -->
+    <button type="button" class="theme-toggle site-nav__icon" data-theme-toggle aria-label="切换主题模式">
       <Icon name="sun" size={18} class="theme-toggle__sun" />
+      <Icon name="moon" size={18} class="theme-toggle__moon" />
+      <Icon name="monitor" size={18} class="theme-toggle__auto" />
     </button>
   </nav>
 </header>

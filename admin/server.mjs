@@ -18,6 +18,8 @@ const content = await import('./lib/content.mjs');
 const build = await import('./lib/build.mjs');
 const { renderPreview } = await import('./lib/preview.mjs');
 const views = await import('./views.mjs');
+const siteData = await import('./lib/site-data.mjs');
+const commentsLib = await import('./lib/comments.mjs');
 
 const app = express();
 const PORT = Number(process.env.ADMIN_PORT || 4000);
@@ -134,6 +136,54 @@ app.get('/admin/build', requirePageAuth, wrap(async (req, res) => {
       releases: build.releasesInfo(),
     }),
   );
+}));
+
+// —— 动态模块的后台页面 ——
+// 这些路径形如 /admin/xxx，会被上面的 /admin/:collection 通用路由先行匹配，
+// 但其不在 COLLECTIONS 中会 next() 到这里（与 /admin/media、/admin/build 同理）。
+app.get('/admin/site-content', requirePageAuth, wrap(async (req, res) => {
+  res.send(views.siteContentPage({ user: req.session.user, boot: currentBoot(req), profile: siteData.getProfile() }));
+}));
+
+app.get('/admin/projects', requirePageAuth, wrap(async (req, res) => {
+  const { listProjects } = await import('./lib/projects.mjs');
+  res.send(views.projectsPage({ user: req.session.user, boot: currentBoot(req), projects: listProjects() }));
+}));
+
+app.get('/admin/nav-links', requirePageAuth, wrap(async (req, res) => {
+  res.send(views.navLinksPage({ user: req.session.user, boot: currentBoot(req), nav: siteData.getNavLinks() }));
+}));
+
+app.get('/admin/friends', requirePageAuth, wrap(async (req, res) => {
+  res.send(views.friendsPage({ user: req.session.user, boot: currentBoot(req), friends: siteData.getFriends() }));
+}));
+
+app.get('/admin/music', requirePageAuth, wrap(async (req, res) => {
+  const { listTracks } = await import('./lib/music.mjs');
+  res.send(views.musicPage({ user: req.session.user, boot: currentBoot(req), tracks: listTracks() }));
+}));
+
+app.get('/admin/announcements', requirePageAuth, wrap(async (req, res) => {
+  res.send(views.announcementsPage({ user: req.session.user, boot: currentBoot(req), items: siteData.getAnnouncements() }));
+}));
+
+app.get('/admin/comments', requirePageAuth, wrap(async (req, res) => {
+  const status = String(req.query.status || 'all');
+  const keyword = String(req.query.keyword || '');
+  res.send(
+    views.commentsPage({
+      user: req.session.user,
+      boot: currentBoot(req),
+      items: commentsLib.adminList({ status, keyword }),
+      counts: commentsLib.adminCount(),
+      filter: { status, keyword },
+    }),
+  );
+}));
+
+app.get('/admin/stats', requirePageAuth, wrap(async (req, res) => {
+  const { summary } = await import('./lib/stats.mjs');
+  res.send(views.statsPage({ user: req.session.user, boot: currentBoot(req), stats: summary({ pathsLimit: 50, regionsLimit: 50 }) }));
 }));
 
 // —— 登录认证 API ——
@@ -317,6 +367,15 @@ app.post('/api/media/delete', requireApiAuth, requireCsrf, wrap(async (req, res)
   fs.unlinkSync(filePath);
   res.json({ ok: true, message: '已删除。' });
 }));
+
+// —— 动态模块 API ——
+// 公开接口供前台访客使用（评论提交、友链申请、歌单、访问打点），全部带限流；
+// 管理接口在 manageRouter 内统一做登录校验，写操作再过 CSRF。
+const routesLib = await import('./lib/routes.mjs');
+app.use('/api/public', routesLib.publicRouter());
+app.use('/api/manage', routesLib.manageRouter({ requireApiAuth, requireCsrf }));
+// 本地音乐文件（data/music-files/）不随静态站构建，经 API 流式输出（支持 Range）。
+app.use('/api/music', routesLib.musicFilesRouter());
 
 // —— 构建 ——
 app.post('/api/build', requireApiAuth, requireCsrf, wrap(async (_req, res) => {

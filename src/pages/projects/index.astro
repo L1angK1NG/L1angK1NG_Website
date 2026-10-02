@@ -1,0 +1,132 @@
+---
+import Icon from '../../components/Icon.astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getProjects } from '../../lib/site-content';
+
+const projects = getProjects();
+const featured = projects.filter((p) => p.featured);
+const rest = projects.filter((p) => !p.featured);
+---
+
+<BaseLayout
+  title="项目"
+  description="L1angK1NG 的项目展示：做过的工具、应用与实验。"
+  pageClass="content-page"
+>
+  <header class="page-header">
+    <p class="eyebrow">Projects</p>
+    <h1>项目</h1>
+    <p>做过的工具、应用与实验 —— 每个项目都附有详情与相关链接。</p>
+  </header>
+
+  {projects.length === 0 ? (
+    <p class="empty-hint">还没有项目。在后台「项目」里新建后，到「构建发布」上线。</p>
+  ) : (
+    <>
+      {featured.length > 0 && (
+        <section class="proj-section" aria-labelledby="featured-heading">
+          <div class="proj-section__head">
+            <h2 class="proj-section__label" id="featured-heading">精选</h2>
+            <p class="proj-section__desc">最能代表这段时间的项目。</p>
+          </div>
+          <div class="proj-grid">
+            {featured.map((project) => (
+              <article class="proj">
+                <span class="proj__icon">
+                  {project.cover ? (
+                    <img src={project.cover} alt="" loading="lazy" referrerpolicy="no-referrer" />
+                  ) : (
+                    <Icon name="layers" size={18} />
+                  )}
+                </span>
+                <div class="proj__body">
+                  <span class="proj__owner">
+                    {project.status || '项目'}
+                    {project.tech.length > 0 && (
+                      <span class="proj__stars">{project.tech.slice(0, 3).join(' · ')}</span>
+                    )}
+                  </span>
+                  <h3 class="proj__title">
+                    <a href={`/projects/${project.slug}/`}>
+                      {project.title}
+                      <Icon name="arrow-up-right" size={16} class="proj__go" />
+                    </a>
+                  </h3>
+                  <p class="proj__desc">{project.subtitle || project.description}</p>
+                  <div class="proj__foot">
+                    <span class="proj__tags">
+                      {project.tech.map((t) => <small>{t}</small>)}
+                    </span>
+                    <a class="proj__note" href={`/projects/${project.slug}/`}>
+                      详情
+                      <Icon name="arrow-right" size={13} />
+                    </a>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {rest.length > 0 && (
+        <section class="proj-section" aria-labelledby="all-heading">
+          <div class="proj-section__head">
+            <h2 class="proj-section__label" id="all-heading">全部项目</h2>
+            <p class="proj-section__desc">按最近更新排序。</p>
+          </div>
+          <div class="proj-grid">
+            {rest.map((project) => (
+              <article class="proj">
+                <span class="proj__icon">
+                  {project.cover ? (
+                    <img src={project.cover} alt="" loading="lazy" referrerpolicy="no-referrer" />
+                  ) : (
+                    <Icon name="layers" size={18} />
+                  )}
+                </span>
+                <div class="proj__body">
+                  <span class="proj__owner">
+                    {project.status || '项目'}
+                    {project.tech.length > 0 && (
+                      <span class="proj__stars">{project.tech.slice(0, 3).join(' · ')}</span>
+                    )}
+                  </span>
+                  <h3 class="proj__title">
+                    <a href={`/projects/${project.slug}/`}>
+                      {project.title}
+                      <Icon name="arrow-up-right" size={16} class="proj__go" />
+                    </a>
+                  </h3>
+                  <p class="proj__desc">{project.subtitle || project.description}</p>
+                  <div class="proj__foot">
+                    <span class="proj__tags">
+                      {project.tech.map((t) => <small>{t}</small>)}
+                    </span>
+                    <a class="proj__note" href={`/projects/${project.slug}/`}>
+                      详情
+                      <Icon name="arrow-right" size={13} />
+                    </a>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  )}
+</BaseLayout>
+
+<style>
+  .proj__icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 9px;
+  }
+  .empty-hint {
+    color: var(--text-muted);
+    padding: 2rem 0;
+  }
+</style>

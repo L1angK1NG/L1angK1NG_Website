@@ -28,6 +28,9 @@ interface GhRepo {
 import cachedRepos from '../data/github-projects.json';
 import siteConfig from '../data/site.config.json';
 import starFillIcon from '@phosphor-icons/core/assets/fill/star-fill.svg?raw';
+import { getAbout } from '../lib/site-content';
+
+const about = getAbout();
 
 const GITHUB_USER = siteConfig.githubUser;
 
@@ -120,51 +123,29 @@ const projectGroups = [
         height="72"
       />
       <p class="eyebrow">About</p>
-      <h1 class="about__lead">
-        比起追新，我更在意一个工具<em>到底好不好用</em>。
-      </h1>
-      <p class="about__sub">
-        这里大多是亲手用过、踩过坑之后的实践笔记 —— 偏实用，也保留个人判断。
-      </p>
-      <p class="about__sub">
-        而这个网站本身，从设计到每一行代码，<em>全部由 AI 开发完成</em> —— 也算是对「到底好不好用」的一份现场答卷。
-      </p>
+      <h1 class="about__lead" set:html={about.lead} />
+      {about.subs.map((line) => (
+        <p class="about__sub" set:html={line} />
+      ))}
 
       <div class="about__facts" aria-label="站点速览">
         <span class="about__fact">{postCount} 篇文章</span>
         <span class="about__fact">写于 {firstYear} 至今</span>
-        <span class="about__fact">全站由 AI 开发</span>
+        {about.facts.map((fact) => (
+          <span class="about__fact">{fact}</span>
+        ))}
         <span class="about__social" aria-label="找到我">
-          <a
-            class="icon-button"
-            href="https://space.bilibili.com/46377861"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Bilibili"
-          >
-            <Icon name="bilibili" />
-          </a>
-          <a
-            class="icon-button"
-            href="https://www.youtube.com/channel/UCUuwwXFGK8Z3OBrq6PzkmUg"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="YouTube"
-          >
-            <Icon name="youtube" />
-          </a>
-          <a
-            class="icon-button"
-            href="https://x.com/shenfanlaogou"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="X"
-          >
-            <Icon name="x-platform" />
-          </a>
-          <a class="icon-button" href="/rss.xml" aria-label="RSS 订阅">
-            <Icon name="rss" />
-          </a>
+          {about.socials.map((s) => (
+            <a
+              class="icon-button"
+              href={s.href}
+              target={s.href.startsWith('http') ? '_blank' : undefined}
+              rel={s.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+              aria-label={s.label}
+            >
+              <Icon name={s.icon} />
+            </a>
+          ))}
         </span>
       </div>
     </header>

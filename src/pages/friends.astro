@@ -1,0 +1,302 @@
+---
+import Icon from '../components/Icon.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="友链"
+  description="朋友们的站点链接，欢迎交换友链。"
+  pageClass="content-page"
+>
+  <header class="page-header">
+    <p class="eyebrow">Friends</p>
+    <h1>友链</h1>
+    <p>志同道合的朋友们 —— 点击卡片即可前往对方站点。</p>
+  </header>
+
+  <section class="friend-notice card-soft" id="friend-notice" hidden>
+    <Icon name="idea" size={18} />
+    <p id="friend-notice-text"></p>
+  </section>
+
+  <div class="friend-grid" id="friend-grid" aria-live="polite">
+    <p class="empty-hint">正在加载友链…</p>
+  </div>
+
+  <section class="friend-apply">
+    <h2 class="friend-apply__title">申请友链</h2>
+    <p class="friend-apply__sub">填写信息提交后，站长审核通过即会展示。</p>
+    <form id="friend-form" class="friend-form">
+      <div class="friend-form__row">
+        <label>
+          <span>站点名称 *</span>
+          <input type="text" name="name" required maxlength="40" placeholder="你的站点名" />
+        </label>
+        <label>
+          <span>站点链接 *</span>
+          <input type="url" name="url" required placeholder="https://…" />
+        </label>
+      </div>
+      <div class="friend-form__row">
+        <label>
+          <span>头像 / Logo</span>
+          <input type="url" name="avatar" placeholder="https://…（选填）" />
+        </label>
+        <label>
+          <span>邮箱</span>
+          <input type="email" name="email" placeholder="选填，仅用于联系" />
+        </label>
+      </div>
+      <label>
+        <span>简介</span>
+        <input type="text" name="desc" maxlength="120" placeholder="一句话介绍你的站点（选填）" />
+      </label>
+      <div class="friend-form__foot">
+        <button type="submit" class="text-link friend-form__send">
+          提交申请
+          <Icon name="arrow-right" size={18} />
+        </button>
+        <span class="friend-form__status" id="friend-status" role="status"></span>
+      </div>
+    </form>
+  </section>
+</BaseLayout>
+
+<script>
+  // 友链列表与申请走运行时 API：审核通过即刻展示，无需重新构建。
+  const esc = (s: unknown) =>
+    String(s ?? '').replace(/[&<>"']/g, (m) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]!,
+    );
+
+  const initFriends = () => {
+    const grid = document.getElementById('friend-grid');
+    const noticeBox = document.getElementById('friend-notice');
+    const noticeText = document.getElementById('friend-notice-text');
+    const form = document.getElementById('friend-form') as HTMLFormElement | null;
+    const status = document.getElementById('friend-status');
+    if (!grid || !form || form.dataset.ready === '1') return;
+    form.dataset.ready = '1';
+
+    const render = (items: Array<Record<string, string>>) => {
+      if (!items.length) {
+        grid.innerHTML = '<p class="empty-hint">暂无友链，欢迎第一个申请。</p>';
+        return;
+      }
+      grid.innerHTML = items
+        .map((f) => {
+          const avatar = f.avatar
+            ? `<img class="friend-card__avatar" src="${esc(f.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" />`
+            : `<span class="friend-card__avatar friend-card__avatar--fallback">${esc((f.name || '?').slice(0, 1))}</span>`;
+          return `<a class="friend-card" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">
+            ${avatar}
+            <strong class="friend-card__name">${esc(f.name)}</strong>
+            <small class="friend-card__desc">${esc(f.desc || '这个人很懒，什么都没写。')}</small>
+          </a>`;
+        })
+        .join('');
+    };
+
+    fetch('/api/public/friends')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load fail'))))
+      .then((data: { notice?: string; items?: Array<Record<string, string>> }) => {
+        if (data.notice && noticeBox && noticeText) {
+          noticeText.textContent = data.notice;
+          noticeBox.hidden = false;
+        }
+        render(data.items ?? []);
+      })
+      .catch(() => render([]));
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const body = Object.fromEntries(fd.entries());
+      const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+      if (btn) btn.disabled = true;
+      if (status) status.textContent = '提交中…';
+      try {
+        const res = await fetch('/api/public/friends/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || '提交失败');
+        if (status) {
+          status.textContent = data.message || '申请已提交，等待审核。';
+          status.classList.remove('is-error');
+        }
+        form.reset();
+      } catch (err) {
+        if (status) {
+          status.textContent = (err as Error).message || '提交失败，请稍后再试。';
+          status.classList.add('is-error');
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  };
+
+  initFriends();
+  document.addEventListener('astro:page-load', initFriends);
+</script>
+
+<style>
+  :global(.empty-hint) {
+    color: var(--text-muted);
+    padding: 2rem 0;
+    grid-column: 1 / -1;
+  }
+  .card-soft {
+    display: flex;
+    gap: 0.7rem;
+    align-items: flex-start;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1.8rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text-muted);
+  }
+  .card-soft p {
+    margin: 0;
+  }
+  .card-soft svg {
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+    color: var(--brand);
+  }
+
+  :global(.friend-grid) {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 2.6rem;
+  }
+  :global(.friend-card) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 1.5rem 1.2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+    text-align: center;
+    transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out),
+      box-shadow var(--t-fast) var(--ease-out);
+  }
+  :global(.friend-card:hover) {
+    transform: translateY(-3px);
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow);
+  }
+  :global(.friend-card__avatar) {
+    width: 3.6rem;
+    height: 3.6rem;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    background: var(--surface-muted);
+  }
+  :global(.friend-card__avatar--fallback) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    font-weight: 650;
+    color: var(--brand);
+  }
+  :global(.friend-card__name) {
+    font-size: 1rem;
+    font-weight: 620;
+  }
+  :global(.friend-card__desc) {
+    color: var(--text-muted);
+    font-size: 0.84rem;
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .friend-apply {
+    max-width: 38rem;
+  }
+  .friend-apply__title {
+    font-size: 1.25rem;
+    margin: 0 0 0.35rem;
+  }
+  .friend-apply__sub {
+    color: var(--text-muted);
+    margin: 0 0 1.3rem;
+  }
+  .friend-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.95rem;
+  }
+  .friend-form__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.95rem;
+  }
+  .friend-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .friend-form label span {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 550;
+  }
+  .friend-form input {
+    padding: 0.62rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.92rem;
+  }
+  .friend-form input:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 1px;
+    border-color: var(--border-strong);
+  }
+  .friend-form__foot {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    margin-top: 0.35rem;
+  }
+  .friend-form__send {
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+  }
+  .friend-form__send:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .friend-form__status {
+    font-size: 0.88rem;
+    color: var(--brand);
+  }
+  .friend-form__status.is-error {
+    color: var(--danger, #b23b3b);
+  }
+
+  @media (max-width: 560px) {
+    .friend-form__row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

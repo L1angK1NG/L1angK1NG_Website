@@ -25,6 +25,8 @@ dist-*/
 src/content/
 public/uploads/
 profile.jpg
+# 动态数据（评论/友链/歌单/公告/统计/项目/导航/页面文案）
+data/
 
 # Logs and OS caches
 npm-debug.log*
@@ -33,3 +35,5 @@ yarn-error.log*
 pnpm-debug.log*
 .DS_Store
 shubiao.png
+# 字体源文件：运行副本在 public/fonts/（根目录锚定写法，不影响副本入库）
+/LXGWWenKaiMono-Medium.ttf

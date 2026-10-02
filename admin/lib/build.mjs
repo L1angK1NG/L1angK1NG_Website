@@ -118,28 +118,52 @@ function releaseLock() {
   rmrf(LOCK_DIR);
 }
 
-function runCommand(command, args) {
+// 剥离 ANSI 转义序列（颜色 / 光标 / 窗口标题等控制符）：astro、npm 往管道输出
+// 时会带上这些序列，原样存进日志后在后台 <pre> 里就显示成乱码。覆盖 CSI、
+// OSC 与单字符转义三种形式。
+const ANSI_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
+
+export function stripAnsi(text) {
+  return String(text ?? '').replace(ANSI_RE, '');
+}
+
+export function runCommand(command, args) {
   return new Promise((resolve) => {
     // shell：npm 在 Windows 上是 .cmd 文件，Node 的 spawn 不借助 shell 无法
     // 运行 .cmd（报 EINVAL）。这里的命令是固定字符串（不含用户输入），因此
     // 使用 shell 不会引入注入风险，在 Linux 上也能正常工作。
-    const child = spawn(command, args, {
-      cwd: ROOT,
-      env: process.env,
-      shell: true,
-      windowsHide: true,
-    });
-    let output = '';
+    // 中文 Windows 的 cmd.exe 自身消息按 OEM 代码页（GBK）编码，先用 chcp
+    // 切到 UTF-8，避免 cmd 的报错以 GBK 字节混进日志（其余输出本来就是 UTF-8）。
+    const isWin = process.platform === 'win32';
+    // FORCE_COLOR / NO_COLOR 让构建工具尽量别输出颜色，转义序列再由 stripAnsi 兜底。
+    const env = { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' };
+    const child = isWin
+      ? spawn('cmd.exe', ['/d', '/s', '/c', `chcp 65001>nul&& ${command} ${args.join(' ')}`], {
+          cwd: ROOT,
+          env,
+          windowsHide: true,
+        })
+      : spawn(command, args, { cwd: ROOT, env, shell: true, windowsHide: true });
+
+    // 收集原始字节，结束时整体解码：转义序列可能跨 chunk 边界，逐块 toString
+    // 会留下半截转义码。构建输出仅几百 KB，无需流式处理。
+    const chunks = [];
+    let size = 0;
     const append = (chunk) => {
-      output += chunk.toString();
-      if (output.length > LOG_LIMIT) {
-        output = output.slice(output.length - LOG_LIMIT);
+      chunks.push(chunk);
+      size += chunk.length;
+      while (size > LOG_LIMIT * 2 && chunks.length > 1) {
+        size -= chunks[0].length;
+        chunks.shift();
       }
     };
+    const decode = () =>
+      stripAnsi(Buffer.concat(chunks).toString('utf8')).slice(-LOG_LIMIT);
+
     child.stdout.on('data', append);
     child.stderr.on('data', append);
-    child.on('error', (err) => resolve({ code: -1, output: output + `\n${err.message}` }));
-    child.on('close', (code) => resolve({ code, output }));
+    child.on('error', (err) => resolve({ code: -1, output: decode() + `\n${err.message}` }));
+    child.on('close', (code) => resolve({ code, output: decode() }));
   });
 }
 

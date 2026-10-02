@@ -17,7 +17,9 @@ const { title = '评论' } = Astro.props;
 <script>
   import { mountComments } from '../lib/comments.js';
 
-  const ENV_ID = import.meta.env.PUBLIC_TWIKOO_ENV_ID;
+  // 配置 PUBLIC_TWIKOO_ENV_ID 时直连外部 Twikoo；未配置则使用博客内置的
+  // Twikoo 协议后端（/api/public/twikoo），评论由后台「评论」模块自由管理。
+  const ENV_ID = import.meta.env.PUBLIC_TWIKOO_ENV_ID || '/api/public/twikoo';
   let activeRoot = null;
   let cleanup = () => {};
 
@@ -28,10 +30,6 @@ const { title = '评论' } = Astro.props;
     cleanup();
     activeRoot = root;
     if (!root) return;
-    if (!ENV_ID) {
-      root.hidden = true;
-      return;
-    }
 
     const controller = new AbortController();
     const mountEl = root.querySelector('[data-c-mount]');

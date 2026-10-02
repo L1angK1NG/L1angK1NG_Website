@@ -9,6 +9,7 @@ import {
   sortPosts,
 } from '../lib/posts';
 import { getPublishedPosts } from '../lib/posts';
+import { getProjects } from '../lib/site-content';
 
 const escapeXml = (value: string) =>
   value
@@ -29,10 +30,11 @@ export async function GET() {
   const categories = getCategories(posts);
   const tags = getTags(posts);
 
-  const staticPaths = ['/', '/search/', '/archive/', '/notes/', '/about/'];
+  const staticPaths = ['/', '/search/', '/archive/', '/notes/', '/projects/', '/nav/', '/friends/', '/about/'];
   const paths = [
     ...staticPaths.map((path) => urlEntry(path)),
     ...posts.map((post) => urlEntry(getPostPath(post), getPostUpdatedDate(post))),
+    ...getProjects().map((project) => urlEntry(`/projects/${project.slug}/`)),
     ...categories.map((category) => urlEntry(getCategoryPath(category.name))),
     ...tags.map((tag) => urlEntry(getTagPath(tag.name))),
   ];

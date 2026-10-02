@@ -2061,6 +2061,19 @@ const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(p
         return true;
       };
 
+      // 网易云曲目首次播放或播放出错时，懒解析出可用地址再播。
+      // 解析成功会回写 track.url，同曲目复用；失败则走既有的跳过逻辑。
+      const ensureTrackUrl = async () => {
+        const track = tracks[currentIndex];
+        if (!track) return false;
+        if (track.url) return true;
+        const fresh = await resolveNeteaseUrl(track);
+        if (!fresh) return false;
+        track.url = fresh;
+        loadedIndex = -1;
+        return true;
+      };
+
       const scheduleSkip = () => {
         if (skipScheduled || !wantsPlayback || !tracks.length) return;
         skipScheduled = true;
@@ -2088,6 +2101,14 @@ const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(p
       };
 
       const playCurrent = async () => {
+        // 无直链的网易云曲目先懒解析；解析失败按不可播处理。
+        if (!tracks[currentIndex]?.url) {
+          const ok = await ensureTrackUrl();
+          if (!ok) {
+            scheduleSkip();
+            return;
+          }
+        }
         if (!loadCurrentAudio()) return;
         const generation = ++playGeneration;
         wantsPlayback = true;
@@ -2190,32 +2211,61 @@ const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(p
         retryButton?.setAttribute('hidden', '');
         count.textContent = '加载中';
         setStatus('正在连接歌单…');
-        list.innerHTML = '<li class="music-player__empty">正在从网易云读取歌单…</li>';
+        list.innerHTML = '<li class="music-player__empty">正在读取歌单…</li>';
+
+        // 统一的曲目映射：兼容自建歌单接口与 Meting 接口的字段命名。
+        const toTrack = (item, index) => ({
+          title: cleanText(item.title ?? item.name, '未知歌曲'),
+          artist: cleanText(item.author ?? item.artist, '未知歌手'),
+          cover: safeUrl(item.pic ?? item.cover ?? item.image),
+          url: safeUrl(item.url ?? item.src),
+          neteaseId: String(item.neteaseId ?? item.id ?? '') || '',
+          source: item.source === 'local' ? 'local' : item.source === 'netease' ? 'netease' : '',
+          index,
+        });
 
         try {
-          const endpoint = new URL(apiBase, window.location.href);
-          endpoint.searchParams.set('server', 'netease');
-          endpoint.searchParams.set('type', 'playlist');
-          endpoint.searchParams.set('id', playlistId);
-          const response = await fetch(endpoint, {
-            signal: fetchController.signal,
-            mode: 'cors',
-            credentials: 'omit',
-            headers: { Accept: 'application/json' },
-          });
-          if (!response.ok) throw new Error(`Playlist request failed: ${response.status}`);
-          const data = await response.json();
-          if (!Array.isArray(data)) throw new Error('Invalid playlist response');
+          // 优先读博客自建歌单（后台「音乐」模块维护：本地上传 + 网易云导入）。
+          let items = [];
+          let managed = false;
+          try {
+            const res = await fetch('/api/public/playlist', {
+              signal: fetchController.signal,
+              headers: { Accept: 'application/json' },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data?.tracks) && data.tracks.length) {
+                items = data.tracks;
+                managed = true;
+              }
+            }
+          } catch {
+            // 自建歌单不可用时回退到网易云歌单。
+          }
 
-          tracks = data
+          if (!managed) {
+            const endpoint = new URL(apiBase, window.location.href);
+            endpoint.searchParams.set('server', 'netease');
+            endpoint.searchParams.set('type', 'playlist');
+            endpoint.searchParams.set('id', playlistId);
+            const response = await fetch(endpoint, {
+              signal: fetchController.signal,
+              mode: 'cors',
+              credentials: 'omit',
+              headers: { Accept: 'application/json' },
+            });
+            if (!response.ok) throw new Error(`Playlist request failed: ${response.status}`);
+            const data = await response.json();
+            if (!Array.isArray(data)) throw new Error('Invalid playlist response');
+            items = data;
+          }
+
+          tracks = items
             .slice(0, 250)
-            .map((item) => ({
-              title: cleanText(item.title ?? item.name, '未知歌曲'),
-              artist: cleanText(item.author ?? item.artist, '未知歌手'),
-              cover: safeUrl(item.pic ?? item.cover ?? item.image),
-              url: safeUrl(item.url ?? item.src),
-            }))
-            .filter((track) => track.url);
+            .map((item, index) => toTrack(item, index))
+            // 自建歌单中网易云曲目可能暂未解析出地址，保留条目供播放时解析。
+            .filter((track) => track.url || (track.neteaseId && track.source === 'netease'));
 
           if (!tracks.length) throw new Error('Playlist is empty');
           const requestedIndex = Number(saved.index);
@@ -2234,10 +2284,25 @@ const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(p
           title.textContent = '稍后再试';
           artist.textContent = '也可以前往网易云查看歌单';
           count.textContent = '0/0';
-          list.innerHTML = '<li class="music-player__empty">公共音乐接口暂时不可用，请稍后重试。</li>';
+          list.innerHTML = '<li class="music-player__empty">音乐接口暂时不可用，请稍后重试。</li>';
           retryButton?.removeAttribute('hidden');
         } finally {
           window.clearTimeout(timeout);
+        }
+      };
+
+      // 网易云曲目地址过期/失效时向后端请求一次重新解析，成功后继续播放。
+      const resolveNeteaseUrl = async (track) => {
+        if (!track?.neteaseId) return '';
+        try {
+          const res = await fetch(`/api/public/playlist/resolve/${encodeURIComponent(track.neteaseId)}`, {
+            headers: { Accept: 'application/json' },
+          });
+          if (!res.ok) return '';
+          const data = await res.json();
+          return safeUrl(data?.url);
+        } catch {
+          return '';
         }
       };
 
@@ -2385,7 +2450,19 @@ const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(p
       audio.addEventListener('ended', () => {
         selectTrack(repeatOne ? currentIndex : getAdjacentIndex(1), true, false);
       });
-      audio.addEventListener('error', scheduleSkip);
+      audio.addEventListener('error', () => {
+        // 播放出错时先尝试重新解析一次网易云地址（外链会过期），
+        // 仍失败才跳下一首，避免因地址过期整单跳过。
+        const track = tracks[currentIndex];
+        const retried = track && track.neteaseId && !failedTracks.has(currentIndex);
+        if (retried) {
+          track.url = '';
+          loadedIndex = -1;
+          playCurrent();
+          return;
+        }
+        scheduleSkip();
+      });
       audio.addEventListener('volumechange', () => {
         root.classList.toggle('is-muted', audio.muted || audio.volume === 0);
         muteButton.setAttribute('aria-label', audio.muted ? '恢复声音' : '静音');

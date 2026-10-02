@@ -12,6 +12,9 @@ import {
   sortPostsByDate,
 } from '../lib/posts';
 import { getPublishedPosts } from '../lib/posts';
+import { getHero } from '../lib/site-content';
+
+const hero = getHero();
 
 const posts = sortPosts(await getPublishedPosts());
 const featuredPosts = posts.filter((post) => (post.data.sticky ?? 0) > 0);
@@ -44,56 +47,22 @@ const coverHue = (value: string) => {
         width="80"
         height="80"
       />
-      <p class="eyebrow">AI · Code · Web</p>
-      <h1 class="hero__title">你好，我是L1angK1NG</h1>
+      <p class="eyebrow">{hero.eyebrow}</p>
+      <h1 class="hero__title">{hero.title}</h1>
       <p class="hero__bio">
-        这里记录 AI 工具、代码实践、网站搭建和一些技术观察。文章偏实用，也保留个人判断。
+        {hero.bio}
       </p>
       <div class="hero__actions">
-        <a class="text-link" href="/archive/">
-          浏览文章
+        <a class="text-link" href={hero.actionHref}>
+          {hero.actionLabel}
           <Icon name="arrow-right" size={18} />
         </a>
         <span class="hero__social" aria-label="社交链接">
-          <a
-            class="icon-button"
-            href="https://space.bilibili.com/46377861"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Bilibili"
-          >
-            <Icon name="bilibili" />
-          </a>
-          <a
-            class="icon-button"
-            href="https://www.douyin.com/user/self"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="抖音"
-          >
-            <Icon name="douyin" />
-          </a>
-          <a
-            class="icon-button"
-            href="https://www.youtube.com/channel/UCUuwwXFGK8Z3OBrq6PzkmUg"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="YouTube"
-          >
-            <Icon name="youtube" />
-          </a>
-          <a
-            class="icon-button"
-            href="https://x.com/shenfanlaogou"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="X"
-          >
-            <Icon name="x-platform" />
-          </a>
-          <a class="icon-button" href="/rss.xml" aria-label="RSS 订阅">
-            <Icon name="rss" />
-          </a>
+          {hero.socials.map((s) => (
+            <a class="icon-button" href={s.href} target={s.href.startsWith('http') ? '_blank' : undefined} rel={s.href.startsWith('http') ? 'noopener noreferrer' : undefined} aria-label={s.label}>
+              <Icon name={s.icon} />
+            </a>
+          ))}
         </span>
       </div>
     </div>
