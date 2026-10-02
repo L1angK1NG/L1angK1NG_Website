@@ -7,6 +7,22 @@
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white&style=flat-square" alt="TypeScript strict">
 </p>
 
+<p align="center"><b>前台首页</b></p>
+
+<p align="center"><img src="picture/1.png" alt="前台首页" width="100%"></p>
+
+<p align="center"><b>后台仪表盘</b></p>
+
+<p align="center"><img src="picture/2.png" alt="后台仪表盘" width="100%"></p>
+
+<p align="center"><b>文章归档</b></p>
+
+<p align="center"><img src="picture/3.png" alt="文章归档" width="100%"></p>
+
+<p align="center"><b>关于页</b></p>
+
+<p align="center"><img src="picture/4.png" alt="关于页" width="100%"></p>
+
 个人全栈博客：**静态前台 + 后台管理**。前台是纯静态构建产物，后台是一个小型 Node 管理服务，负责登录鉴权、在线编辑 Markdown，并在发布时触发一次前台构建、原子切换上线。
 > **基于原作者项目开发**：本项目在 [laogou717/clay-blog](https://github.com/laogou717/clay-blog)（MIT 协议）的基础上改造而成——保留其 Astro 静态博客的全部前台能力（文章、随笔、归档、分类、标签、搜索、RSS、sitemap、Twikoo 评论、音乐播放器），新增后台管理端与「构建即发布」的全栈能力。感谢原作者的开源工作。
 
