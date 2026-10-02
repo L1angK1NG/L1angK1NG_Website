@@ -898,4 +898,25 @@
       }
     });
   }
+
+  // —— 数据备份仓库地址 ——
+  const backupRemoteInput = document.getElementById('backup-remote');
+  const backupSaveBtn = document.getElementById('backup-save');
+  if (backupRemoteInput && backupSaveBtn) {
+    backupSaveBtn.addEventListener('click', async () => {
+      backupSaveBtn.disabled = true;
+      try {
+        const result = await api('/api/backup/config', {
+          method: 'POST',
+          body: { remoteUrl: backupRemoteInput.value.trim() },
+        });
+        toast(result.message || '已保存');
+        // 刷新页面以展示新的「当前生效」地址与来源
+        setTimeout(() => window.location.reload(), 800);
+      } catch (err) {
+        toast(err.message, true);
+        backupSaveBtn.disabled = false;
+      }
+    });
+  }
 })();

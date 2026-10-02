@@ -60,11 +60,7 @@ npm run admin        # http://localhost:4000/admin
 
 > 说明：正文里可直接用博客原有的 `{% %}` 短代码，后台预览会尽量还原；最终效果以构建结果为准。
 
-> **内容与媒体不进 git 仓库**：`src/content/`（文章与随笔）和 `public/uploads/`（上传图片）属于个人数据，已被 `.gitignore` 排除，不会提交到 GitHub。因此在换服务器或重新克隆仓库后，这些目录会是空的——需要把旧服务器上的这两个目录拷贝过去，或定期备份：
->
-> ```bash
-> tar -czf blog-content-$(date +%F).tar.gz src/content public/uploads
-> ```
+> **内容与媒体不进 git 仓库**：`src/content/`（文章与随笔）和 `public/uploads/`（上传图片）属于个人数据，已被 `.gitignore` 排除，不会提交到公开仓库。这些数据的备份已经自动化——每次「构建发布」成功后自动推送到你的 GitHub 私有仓库，详见「八、数据备份与恢复」。
 
 ---
 
@@ -206,6 +202,8 @@ sudo systemctl status blog-admin
 npm run deploy
 ```
 
+- 每次「构建发布」成功后，后台会自动把个人数据备份到 GitHub 私有仓库（见「八、数据备份与恢复」）；备份或推送失败不影响发布结果。
+
 ---
 
 ## 七、常见问题
@@ -221,3 +219,51 @@ npm run deploy
 
 **图片传哪里了？**
 `public/uploads/`，构建后可通过 `/uploads/文件名` 访问，可直接插入正文或用作封面。
+
+---
+
+## 八、数据备份与恢复
+
+公开仓库只保存源码；文章、媒体、动态数据等个人数据全部在 `.gitignore` 里。为了不丢数据，后台在**每次「构建发布」成功后自动做一次备份**。
+
+### 备份了什么
+
+| 备份内容 | 说明 |
+| --- | --- |
+| `src/content/` | 文章与随笔（Markdown） |
+| `public/uploads/` | 后台上传的媒体 |
+| `data/` | 动态数据（评论/友链/歌单/公告/统计/项目/导航/页面文案） |
+| `profile.jpg` | 个人头像 |
+| `.env` | 站点配置与后台凭据（含密码哈希；可用 `BACKUP_INCLUDE_ENV=false` 关闭） |
+
+构建产物（`dist/`、`releases/`）不在备份范围——源码 + 上表数据即可随时完整重建。
+
+### 备份到哪
+
+- **本地**：项目同级目录 `<项目名>-backup/`（独立 git 仓库，可用 `BACKUP_DIR` 改位置）。每次发布一个提交，历史完整可回溯；已删除的文章/媒体也会同步从备份中移除（纯镜像）。
+- **远端**：GitHub 私有仓库。地址在后台**「构建发布 → 数据备份」**卡片里直接填写保存（存 `data/backup-config.json`，随数据一起备份）；留空时依次回落 `.env` 的 `BACKUP_REMOTE_URL`、自动推导（`<owner>/<repo>-backup`）。改完地址下一次发布自动改推新仓库，旧仓库里的历史提交不受影响。
+
+**首次启用（只需一次）**：在 GitHub 上创建一个**私有空仓库**，名称与远端地址一致（如 `L1angK1NG_Website-backup`）。之后的推送全自动；在此之前推送会失败并记录在构建日志里，建好库后无需任何操作，下一次「构建发布」或 `npm run backup` 会自动补推。
+
+### 手动备份
+
+```bash
+npm run backup
+```
+
+### 相关配置（.env）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `BACKUP_ENABLED` | `true` | 设为 `false` 关闭自动备份 |
+| `BACKUP_DIR` | `<项目名>-backup` | 本地备份仓库位置 |
+| `BACKUP_REMOTE_URL` | 自动推导 | 后台「构建发布」页未填写仓库地址时的回落配置 |
+| `BACKUP_INCLUDE_ENV` | `true` | 是否连 `.env` 一起备份 |
+
+> 推送失败（网络断、仓库未建、凭据过期）不影响发布结果：本地提交已保留，下次发布或手动 `npm run backup` 时自动补推。具体原因会写进构建日志。
+
+### 恢复步骤
+
+1. `git clone` 公开源码仓库，`npm install`
+2. `git clone` 私有备份仓库，把 `src/content`、`public/uploads`、`data`、`profile.jpg`、`.env` 拷贝到项目对应位置
+3. `npm run deploy` 重新构建发布

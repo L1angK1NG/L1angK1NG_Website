@@ -283,7 +283,7 @@ export function mediaPage({ user, boot, files }) {
   return layout({ title: '媒体', active: 'media', user, boot, content });
 }
 
-export function buildPage({ user, boot, status, releases }) {
+export function buildPage({ user, boot, status, releases, backupConfig }) {
   const state = status?.status || '尚未构建';
   const finished = status?.finishedAt ? new Date(status.finishedAt).toLocaleString('zh-CN') : '—';
   // 剥一遍 ANSI：修复前存下的旧日志里可能还带着转义序列
@@ -296,6 +296,19 @@ export function buildPage({ user, boot, status, releases }) {
       </li>`,
     )
     .join('\n');
+
+  const bk = backupConfig || {};
+  const backupCard = `
+    <section class="card">
+      <h2 class="card__title">数据备份</h2>
+      <p>每次「构建并发布」成功后，自动把个人数据（文章随笔、上传媒体、动态数据、头像、.env）推送到下面的私人仓库（建议 GitHub 私有仓库），推送失败不影响发布、下次自动补推。留空则使用默认地址（主仓库地址 + <code>-backup</code>）。</p>
+      <div class="field__row">
+        <input class="input" id="backup-remote" value="${esc(bk.remoteUrl || '')}" placeholder="https://github.com/用户名/仓库名.git" spellcheck="false" />
+        <button type="button" class="btn" id="backup-save">保存仓库地址</button>
+      </div>
+      <p>当前生效：<code id="backup-effective">${esc(bk.effective || '（未配置，备份仅保留在本地）')}</code>（来源：${esc(bk.sourceLabel || '未配置')}）</p>
+      <p>上次备份：${esc(status?.backup?.summary || '尚未执行')}</p>
+    </section>`;
 
   const content = `
     <header class="page__head page__head--row">
@@ -311,6 +324,7 @@ export function buildPage({ user, boot, status, releases }) {
         <div><span>完成时间</span><strong id="build-time">${esc(finished)}</strong></div>
       </div>
     </section>
+    ${backupCard}
     <section class="card">
       <h2 class="card__title">构建日志</h2>
       <pre class="log" id="build-log">${log}</pre>

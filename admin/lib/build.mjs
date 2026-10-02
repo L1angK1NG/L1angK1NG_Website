@@ -278,7 +278,29 @@ export async function buildAndPublish() {
     const cacheNote = cacheRebuilt
       ? '（检测到已删除的内容，已重建构建缓存；若本地 npm run dev 预览异常请重启它）'
       : '';
-    return { ok: true, log: output, release: stamp, cacheRebuilt, message: `构建成功并已发布。${cacheNote}` };
+
+    // 发布成功后自动把个人数据备份到私人仓库。备份失败绝不影响本次发布
+    // 的成败，只在日志里说明原因；push 失败时本地提交已保留，下次自动补推。
+    // 延迟导入：避免与 backup.mjs 形成顶层循环依赖。
+    let backup = null;
+    try {
+      const { runBackup } = await import('./backup.mjs');
+      backup = await runBackup(stamp);
+    } catch (err) {
+      backup = { ok: false, pushed: false, summary: `备份流程异常：${err?.message || err}` };
+    }
+    status.backup = { ok: backup.ok, pushed: !!backup.pushed, summary: backup.summary };
+    status.log = `${output}\n\n—— 数据备份 ——\n${backup.summary}`;
+    writeStatus(status);
+
+    return {
+      ok: true,
+      log: status.log,
+      release: stamp,
+      cacheRebuilt,
+      backup,
+      message: `构建成功并已发布。${cacheNote}数据备份：${backup.ok ? backup.summary : '失败（详见日志）。'}`,
+    };
   } finally {
     releaseLock();
   }

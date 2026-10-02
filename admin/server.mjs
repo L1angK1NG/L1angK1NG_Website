@@ -16,6 +16,7 @@ const { newCsrfToken, safeEqual, requireCsrf, verifyCredentials, isLocked, recor
   await import('./lib/auth.mjs');
 const content = await import('./lib/content.mjs');
 const build = await import('./lib/build.mjs');
+const backup = await import('./lib/backup.mjs');
 const { renderPreview } = await import('./lib/preview.mjs');
 const views = await import('./views.mjs');
 const siteData = await import('./lib/site-data.mjs');
@@ -134,8 +135,21 @@ app.get('/admin/build', requirePageAuth, wrap(async (req, res) => {
       boot: currentBoot(req),
       status: build.lastBuildStatus(),
       releases: build.releasesInfo(),
+      backupConfig: backup.getBackupConfig(),
     }),
   );
+}));
+
+// —— 数据备份配置 ——
+// 仓库地址在构建发布页填写保存（存 data/backup-config.json），发布成功后的
+// 自动备份会推送到这里生效的地址。GET 供页面展示，POST 供「保存地址」按钮。
+app.get('/api/backup/config', requireApiAuth, (_req, res) => {
+  res.json(backup.getBackupConfig());
+});
+
+app.post('/api/backup/config', requireApiAuth, requireCsrf, wrap(async (req, res) => {
+  const result = backup.saveBackupRemoteUrl(req.body?.remoteUrl);
+  res.status(result.ok ? 200 : 400).json(result);
 }));
 
 // —— 动态模块的后台页面 ——
