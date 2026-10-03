@@ -14,12 +14,14 @@ import speakerSlashIcon from '@phosphor-icons/core/assets/regular/speaker-slash.
 import waveformIcon from '@phosphor-icons/core/assets/regular/waveform.svg?raw';
 import xIcon from '@phosphor-icons/core/assets/regular/x.svg?raw';
 
-const playlistId =
-  String(import.meta.env.PUBLIC_NETEASE_PLAYLIST_ID ?? '8792942606').trim() || '8792942606';
+// 歌单 ID 只从环境变量读取，代码里不写死真实值（隐私不入仓库）；未配置则播放器不初始化
+const playlistId = String(import.meta.env.PUBLIC_NETEASE_PLAYLIST_ID ?? '').trim();
 const apiBase =
   String(import.meta.env.PUBLIC_MUSIC_API ?? 'https://meting.mikus.ink/api').trim() ||
   'https://meting.mikus.ink/api';
-const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(playlistId)}`;
+const playlistHref = playlistId
+  ? `https://music.163.com/#/playlist?id=${encodeURIComponent(playlistId)}`
+  : '';
 ---
 
 <div
@@ -52,7 +54,7 @@ const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(p
           <span class="music-player__icon music-player__muted-icon" aria-hidden="true" set:html={speakerSlashIcon}></span>
         </button>
         <a
-          href={playlistHref}
+          href={playlistHref || undefined}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="在网易云音乐中打开歌单"
@@ -1858,11 +1860,13 @@ const playlistHref = `https://music.163.com/#/playlist?id=${encodeURIComponent(p
       const list = root.querySelector('[data-music-list]');
       const cover = root.querySelector('[data-music-cover]');
       const dockCover = root.querySelector('[data-music-dock-cover]');
-      const playlistId = root.dataset.playlistId || '8792942606';
+      // 未配置歌单 ID 时直接不初始化播放器，而不是回落到写死的真实歌单
+      const playlistId = root.dataset.playlistId || '';
       const apiBase = root.dataset.apiBase || 'https://meting.mikus.ink/api';
       const storageKey = `blog-music-player:${playlistId}`;
 
       if (
+        !playlistId ||
         !panel || !toggle || !audio || !playButton || !prevButton || !nextButton ||
         !muteButton || !progress || !list || !title || !artist || !status
       ) return;

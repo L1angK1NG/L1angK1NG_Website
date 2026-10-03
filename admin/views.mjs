@@ -301,12 +301,12 @@ export function buildPage({ user, boot, status, releases, backupConfig }) {
   const backupCard = `
     <section class="card">
       <h2 class="card__title">数据备份</h2>
-      <p>每次「构建并发布」成功后，自动把个人数据（文章随笔、上传媒体、动态数据、头像、.env）推送到下面的私人仓库（建议 GitHub 私有仓库），推送失败不影响发布、下次自动补推。留空则使用默认地址（主仓库地址 + <code>-backup</code>）。</p>
+      <p>每次「构建并发布」成功后，自动把个人数据（文章随笔、上传媒体、动态数据、头像、.env）直接推送到上面的私人仓库（建议 GitHub 私有仓库），全程使用系统临时目录、本地不留备份缓存；推送失败不影响发布，下次发布自动重试。留空则使用默认地址（主仓库地址 + <code>-backup</code>）。</p>
       <div class="field__row">
         <input class="input" id="backup-remote" value="${esc(bk.remoteUrl || '')}" placeholder="https://github.com/用户名/仓库名.git" spellcheck="false" />
         <button type="button" class="btn" id="backup-save">保存仓库地址</button>
       </div>
-      <p>当前生效：<code id="backup-effective">${esc(bk.effective || '（未配置，备份仅保留在本地）')}</code>（来源：${esc(bk.sourceLabel || '未配置')}）</p>
+      <p>当前生效：<code id="backup-effective">${esc(bk.effective || '（未配置，暂不备份）')}</code>（来源：${esc(bk.sourceLabel || '未配置')}）</p>
       <p>上次备份：${esc(status?.backup?.summary || '尚未执行')}</p>
     </section>`;
 

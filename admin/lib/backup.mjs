@@ -1,5 +1,6 @@
-// 自动数据备份：每次「构建发布」成功后，把公开仓库之外的个人数据镜像到
-// 一个独立的本地 git 仓库，并推送到 GitHub 私有仓库作为异地备份。
+// 自动数据备份：每次「构建发布」成功后，把公开仓库之外的个人数据直接推送到
+// GitHub 私有仓库作为异地备份。整个过程在系统临时目录里完成：建临时仓库 →
+// 拉取远端历史衔接 → 镜像复制数据 → 提交 → 推送 → 删除临时仓库，本地零残留。
 //
 // 备份范围（全部是 .gitignore 排除、无法从公开仓库重建的内容）：
 //   src/content/      文章与随笔（Markdown）
@@ -10,18 +11,20 @@
 //
 // 构建产物 dist/、releases/ 不备份：源码 + 以上数据即可随时完整重建。
 //
-// 备份仓库默认位于项目同级目录（必须在项目外：避免嵌套 git 仓库，也避免
-// 提交钩子把备份数据误当项目改动扫描）。备份失败只记录原因，绝不影响
-// 发布结果；推送失败时本地提交已保留，下次发布会自动补推。
+// 远端历史保持连续：临时仓库每次先拉取远端最新提交再叠加快照提交，文章/媒体
+// 的历史版本在私库中完整可回溯。备份失败只记录原因，绝不影响发布结果；某次
+// 推送失败时该次备份作废（数据源在项目内不会丢失），下次发布会自动全量重试。
+// 未配置远端地址时无处可推，直接跳过备份，也不在本地产生任何缓存。
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { ROOT } from './env.mjs';
 import { readJSON, writeJSON } from './store.mjs';
 
 const BACKUP_ENABLED = (process.env.BACKUP_ENABLED ?? 'true') !== 'false';
-// 留空/未配置时用项目同级目录，如 E:\Project\Web_Project\L1angK1NG_Website-backup
-const BACKUP_DIR = process.env.BACKUP_DIR || path.join(ROOT, '..', `${path.basename(ROOT)}-backup`);
+// 临时备份仓库：系统临时目录下的固定名目录，推送完成后整个删除，本地零残留。
+const BACKUP_TMP_DIR = path.join(os.tmpdir(), `${path.basename(ROOT)}-backup-tmp`);
 
 // 后台在构建发布页保存的仓库地址（data/backup-config.json）。
 // 远端地址的生效优先级：后台配置 > 环境变量 BACKUP_REMOTE_URL > 自动推导。
@@ -34,7 +37,7 @@ function uiRemoteUrl() {
 
 // 未在后台/环境变量配置远端时，从主仓库 origin 推导默认私库地址：
 // github.com/<owner>/<repo> → github.com/<owner>/<repo>-backup（私有仓库）。
-// 解析不出（非 GitHub 远端/无 origin）则返回空串，此时只做本地备份。
+// 解析不出（非 GitHub 远端/无 origin）则返回空串，此时跳过备份。
 function defaultRemoteUrl() {
   try {
     const r = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: ROOT, encoding: 'utf8', windowsHide: true });
@@ -46,7 +49,7 @@ function defaultRemoteUrl() {
   }
 }
 
-// 当前实际生效的远端地址；空串表示只做本地备份、不推送
+// 当前实际生效的远端地址；空串表示未配置，备份跳过。
 export function effectiveRemoteUrl() {
   return uiRemoteUrl() || (process.env.BACKUP_REMOTE_URL || '').trim() || defaultRemoteUrl();
 }
@@ -86,13 +89,13 @@ export function saveBackupRemoteUrl(input) {
     effective,
     message: effective
       ? `仓库地址已保存，下次发布备份将推送到 ${effective}`
-      : '已保存。当前未配置远端仓库地址，备份仅保留在本地。',
+      : '已保存。当前未配置远端仓库地址，下次发布将跳过备份。',
   };
 }
 // .env 含密码哈希与会话密钥，私库务必私有；默认备份以保证可完整恢复
 const INCLUDE_ENV = (process.env.BACKUP_INCLUDE_ENV ?? 'true') !== 'false';
-// push 等待上限：网络差时别让「构建发布」按钮无限等待
-const PUSH_TIMEOUT_MS = 90_000;
+// fetch/push 等待上限：网络差时别让「构建发布」按钮无限等待
+const NET_TIMEOUT_MS = 90_000;
 
 // 串行化：后台发布与命令行 deploy 可能并发调用，备份动作排队执行。
 let queue = Promise.resolve();
@@ -110,7 +113,7 @@ function spawnGit(args, cwd) {
     const child = spawn('git', args, { cwd, windowsHide: true });
     let stdout = '';
     let stderr = '';
-    const timer = args[0] === 'push' ? setTimeout(() => child.kill(), PUSH_TIMEOUT_MS) : null;
+    const timer = args[0] === 'push' || args[0] === 'fetch' ? setTimeout(() => child.kill(), NET_TIMEOUT_MS) : null;
     child.stdout.on('data', (c) => (stdout += c));
     child.stderr.on('data', (c) => (stderr += c));
     child.on('error', (err) => {
@@ -145,38 +148,27 @@ function dirStats(dir) {
 const fmtSize = (bytes) =>
   bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`;
 
-// 首次使用时初始化备份仓库；之后每次按当前生效地址校正 origin（后台改地址
-// 或 .env 改地址都会在下一次备份时自动同步过去）。
-async function ensureRepo(git) {
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
-  const gitDir = path.join(BACKUP_DIR, '.git');
-  const remoteUrl = effectiveRemoteUrl();
-  if (!fs.existsSync(gitDir)) {
-    let r = await git(['init', '-b', 'main']);
-    if (r.code !== 0) {
-      // 老版本 git 不支持 -b：初始化后把 unborn 分支改名为 main
-      await git(['init']);
-      await git(['symbolic-ref', 'HEAD', 'refs/heads/main']);
-    }
-    // 提交身份沿用主仓库的配置，避免依赖全局 git config
-    const name = (await git(['config', 'user.name'])).stdout.trim() || 'L1angK1NG';
-    const email =
-      (await git(['config', 'user.email'])).stdout.trim() || 'L1angK1NG@users.noreply.github.com';
-    await git(['config', 'user.name', name]);
-    await git(['config', 'user.email', email]);
-    if (remoteUrl) await git(['remote', 'add', 'origin', remoteUrl]);
-  } else if (remoteUrl) {
-    // 补加/同步 origin：首次建仓时若未配置远端，之后改配置要能生效
-    const current = (await git(['remote', 'get-url', 'origin'])).stdout.trim();
-    if (!current) await git(['remote', 'add', 'origin', remoteUrl]);
-    else if (current !== remoteUrl) await git(['remote', 'set-url', 'origin', remoteUrl]);
+// 初始化临时备份仓库：提交身份沿用主仓库的配置，避免依赖全局 git config；
+// origin 指向本次生效的远端地址（后台改地址或 .env 改地址即时生效）。
+async function setupTempRepo(git, remoteUrl) {
+  let r = await git(['init', '-b', 'main']);
+  if (r.code !== 0) {
+    // 老版本 git 不支持 -b：初始化后把 unborn 分支改名为 main
+    await git(['init']);
+    await git(['symbolic-ref', 'HEAD', 'refs/heads/main']);
   }
+  const name = (await git(['config', 'user.name'])).stdout.trim() || 'L1angK1NG';
+  const email =
+    (await git(['config', 'user.email'])).stdout.trim() || 'L1angK1NG@users.noreply.github.com';
+  await git(['config', 'user.name', name]);
+  await git(['config', 'user.email', email]);
+  await git(['remote', 'add', 'origin', remoteUrl]);
   writeReadme();
 }
 
 const README_TEXT = `# L1angK1NG_Website 数据备份
 
-由博客后台在每次「构建发布」成功后自动生成并推送，远端为 GitHub 私有仓库。
+由博客后台在每次「构建发布」成功后自动推送，远端为 GitHub 私有仓库。
 
 ## 备份范围（公开仓库之外、无法重建的个人数据）
 
@@ -198,18 +190,9 @@ const README_TEXT = `# L1angK1NG_Website 数据备份
 
 function writeReadme() {
   try {
-    fs.writeFileSync(path.join(BACKUP_DIR, 'BACKUP-README.md'), README_TEXT, 'utf8');
+    fs.writeFileSync(path.join(BACKUP_TMP_DIR, 'BACKUP-README.md'), README_TEXT, 'utf8');
   } catch {
     /* 忽略 */
-  }
-}
-
-// 把备份工作区还原成「纯镜像」：清掉上次的内容再复制，保证已删除的
-// 文章/媒体在备份里也同步消失（cp 合并式复制做不到这一点）。
-function resetWorktree() {
-  for (const entry of fs.readdirSync(BACKUP_DIR, { withFileTypes: true })) {
-    if (entry.name === '.git') continue;
-    fs.rmSync(path.join(BACKUP_DIR, entry.name), { recursive: true, force: true });
   }
 }
 
@@ -217,15 +200,18 @@ function resetWorktree() {
 function classifyPushError(stderr) {
   const s = stderr.toLowerCase();
   if (/repository not found|does not appear to be a git repository|404|not found/.test(s)) {
-    return '远端仓库不存在或无权访问。请先在 GitHub 上创建一个私有空仓库（名称与远端地址一致），完成后无需任何操作，下次「构建发布」或 npm run backup 会自动补推。';
+    return '远端仓库不存在或无权访问。请先在 GitHub 上创建一个私有空仓库（名称与远端地址一致），完成后无需任何操作，下次「构建发布」或 npm run backup 会自动重试。';
   }
   if (/authentication failed|could not read username|could not read password|permission denied|403/.test(s)) {
     return '远端认证失败：请在本机完成一次 GitHub 登录（Git 凭据管理器会弹出授权窗口），然后运行 npm run backup 重试。';
   }
-  if (/timed?\s?out|could not resolve host|failed to connect|unable to access|connection/.test(s)) {
-    return '网络异常，暂时无法连接远端。本地提交已保存，下次发布成功后会自动补推。';
+  if (/\[rejected\]|non-fast-forward|fetch first/.test(s)) {
+    return '远端已有备份历史，但本次临时仓库未能衔接（多为网络波动导致拉取历史失败）。下次「构建发布」会自动重试。';
   }
-  return '远端推送失败。本地提交已保存，下次发布成功后会自动补推。';
+  if (/timed?\s?out|could not resolve host|failed to connect|unable to access|connection/.test(s)) {
+    return '网络异常，暂时无法连接远端。下次发布成功后会自动重试。';
+  }
+  return '远端推送失败。下次发布成功后会自动重试。';
 }
 
 // 镜像复制的数据清单：源路径（相对项目根）→ 备份路径（相对备份仓库根）。
@@ -242,29 +228,47 @@ if (INCLUDE_ENV) BACKUP_ITEMS.push(['.env', '.env']);
 // 本函数永不抛异常：任何失败都折叠进返回值 { ok, summary, ... }。
 export function runBackup(release = null) {
   const run = async () => {
-    const base = { ok: false, committed: false, pushed: false, dir: BACKUP_DIR };
+    const base = { ok: false, committed: false, pushed: false, dir: BACKUP_TMP_DIR };
     if (!BACKUP_ENABLED) {
       return { ...base, ok: true, skipped: true, summary: '备份未启用（BACKUP_ENABLED=false），已跳过。' };
     }
+    const remoteUrl = effectiveRemoteUrl();
+    if (!remoteUrl) {
+      return {
+        ...base,
+        skipped: true,
+        summary: '未配置备份远端仓库地址（可在构建发布页或 BACKUP_REMOTE_URL 配置），本次备份已跳过。',
+      };
+    }
     const stripAnsi = await ansiStripper();
     const git = async (args) => {
-      const r = await spawnGit(args, BACKUP_DIR);
+      const r = await spawnGit(args, BACKUP_TMP_DIR);
       return { ...r, stdout: stripAnsi(r.stdout), stderr: stripAnsi(r.stderr) };
     };
 
     try {
-      await ensureRepo(git);
-    } catch (err) {
-      return { ...base, error: String(err.message || err), summary: `备份仓库初始化失败（${BACKUP_DIR}）：${err.message || err}` };
-    }
+      // 上次备份若因进程中断残留了临时目录，先清掉再重新建仓
+      fs.rmSync(BACKUP_TMP_DIR, { recursive: true, force: true });
+      fs.mkdirSync(BACKUP_TMP_DIR, { recursive: true });
 
-    try {
+      try {
+        await setupTempRepo(git, remoteUrl);
+      } catch (err) {
+        return { ...base, error: String(err.message || err), summary: `临时备份仓库初始化失败（${BACKUP_TMP_DIR}）：${err.message || err}` };
+      }
+
+      // 衔接远端历史：拉取远端最新提交并把 HEAD 软重置过去，本次提交即叠加
+      // 在历史之上（文章/媒体的历史版本在私库中可回溯）。失败（首次推送/
+      // 空仓库/网络异常）则忽略，从头建历史；远端非空且未衔接时 push 会被
+      // 拒绝，走推送失败提示，不会覆盖远端。
+      const fetch = await git(['fetch', 'origin', 'main']);
+      if (fetch.code === 0) await git(['reset', '--soft', 'FETCH_HEAD']);
+
       // 镜像复制各数据目录/文件
-      resetWorktree();
       const items = [];
       for (const [srcRel, destRel] of BACKUP_ITEMS) {
         const src = path.join(ROOT, srcRel);
-        const dest = path.join(BACKUP_DIR, destRel);
+        const dest = path.join(BACKUP_TMP_DIR, destRel);
         if (!fs.existsSync(src)) continue;
         fs.cpSync(src, dest, { recursive: true });
         const st = fs.statSync(src);
@@ -281,9 +285,9 @@ export function runBackup(release = null) {
         totalFiles: total.files,
         totalBytes: total.bytes,
       };
-      fs.writeFileSync(path.join(BACKUP_DIR, 'backup-meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+      fs.writeFileSync(path.join(BACKUP_TMP_DIR, 'backup-meta.json'), JSON.stringify(meta, null, 2), 'utf8');
 
-      // 提交：工作区与上次一致时（数据无变化）跳过 commit，但仍会尝试 push
+      // 提交：快照与远端最新一致时（数据无变化）跳过 commit，但仍会确认 push
       await git(['add', '-A']);
       const dirty = (await git(['status', '--porcelain'])).stdout.trim().length > 0;
       if (dirty) {
@@ -304,31 +308,32 @@ export function runBackup(release = null) {
         totalBytes: total.bytes,
       };
 
-      const remoteUrl = effectiveRemoteUrl();
-      if (!remoteUrl) {
-        return {
-          ...result,
-          summary: `数据已备份到本地仓库 ${BACKUP_DIR}${dirty ? '（已提交）' : '（数据无变化）'}；未配置远端仓库地址，暂不推送。`,
-        };
-      }
-
-      // push：失败不影响发布结果；本地提交已保留，下次自动补推
+      // push：失败不影响发布结果，该次备份作废（临时目录随 finally 删除），
+      // 下次发布会基于项目内数据自动全量重试
       const push = await git(['push', 'origin', 'main']);
       if (push.code === 0) {
         return {
           ...result,
           pushed: true,
-          summary: `数据已备份并推送到私人仓库${dirty ? '' : '（数据无变化，仅补推）'}：${remoteUrl}`,
+          summary: `数据已备份并推送到私人仓库${dirty ? '' : '（数据无变化）'}：${remoteUrl}；本地未保留缓存。`,
         };
       }
       return {
         ...result,
         pushed: false,
         error: (push.stderr || push.stdout).trim().slice(-500),
-        summary: `数据已备份到本地仓库${dirty ? '并提交' : '（数据无变化）'}，但推送到 ${remoteUrl} 未完成：${classifyPushError(push.stderr || push.stdout)}`,
+        summary: `备份推送到 ${remoteUrl} 未完成：${classifyPushError(push.stderr || push.stdout)}`,
       };
     } catch (err) {
       return { ...base, error: String(err.message || err), summary: `备份过程出错：${err.message || err}` };
+    } finally {
+      // 无论成败都删掉临时仓库：成功则本地无需保留；失败则该次作废，数据源
+      // 在项目内不会丢失，下次自动全量重试。
+      try {
+        fs.rmSync(BACKUP_TMP_DIR, { recursive: true, force: true });
+      } catch {
+        /* 忽略 */
+      }
     }
   };
   return (queue = queue.then(run, run));
