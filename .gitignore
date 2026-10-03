@@ -25,8 +25,12 @@ dist-*/
 src/content/
 public/uploads/
 profile.jpg
-# 动态数据（评论/友链/歌单/公告/统计/项目/导航/页面文案）
-data/
+# 动态数据默认不入库（个人数据与运行时状态）；仅白名单放行页面基础数据，
+# 作为克隆者的默认站点骨架。后台新增的数据文件会保持忽略，需入库时在此显式放行。
+data/*
+!data/profile.json
+!data/projects.json
+!data/announcements.json
 
 # Logs and OS caches
 npm-debug.log*

@@ -1,0 +1,75 @@
+{
+  "hero": {
+    "eyebrow": "AI · Code · Web",
+    "title": "你好，我是L1angK1NG",
+    "bio": "Ciallo～(∠・ω< )⌒☆，欢迎来到我的个人博客",
+    "actionLabel": "浏览文章",
+    "actionHref": "/archive/",
+    "socials": [
+      {
+        "icon": "bilibili",
+        "label": "Bilibili",
+        "href": "https://space.bilibili.com/3493079350774423"
+      },
+      {
+        "icon": "douyin",
+        "label": "抖音",
+        "href": "https://v.douyin.com/vYbOd6pqFJw/ 7@0.com :0pm"
+      },
+      {
+        "icon": "github",
+        "label": "GitHub",
+        "href": "https://github.com/L1angK1NG"
+      }
+    ]
+  },
+  "about": {
+    "lead": "去经历，去记录，去<em>成为想成为的人</em>。",
+    "subs": [
+      "这里记录着我生活的一点一滴和技术心得",
+      "而对于这个网站，这里没有标准答案，只有我一路走来的思考、尝试与记录。"
+    ],
+    "facts": [
+      "留住时间痕迹"
+    ],
+    "socials": [
+      {
+        "icon": "bilibili",
+        "label": "Bilibili",
+        "href": "https://space.bilibili.com/3493079350774423"
+      },
+      {
+        "icon": "douyin",
+        "label": "抖音",
+        "href": "https://v.douyin.com/vYbOd6pqFJw/ 7@0.com :0pm"
+      },
+      {
+        "icon": "github",
+        "label": "GitHub",
+        "href": "https://github.com/L1angK1NG"
+      }
+    ]
+  },
+  "footer": {
+    "tagline": "AI · Code · Web",
+    "links": [
+      {
+        "icon": "bilibili",
+        "label": "Bilibili",
+        "href": "https://space.bilibili.com/3493079350774423"
+      },
+      {
+        "icon": "douyin",
+        "label": "抖音",
+        "href": "https://v.douyin.com/vYbOd6pqFJw/ 7@0.com :0pm"
+      },
+      {
+        "icon": "github",
+        "label": "GitHub",
+        "href": "https://github.com/L1angK1NG"
+      }
+    ],
+    "copyright": "© {year} {author}",
+    "attribution": "由 <a href=\"https://astro.build\" target=\"_blank\" rel=\"noopener noreferrer\">Astro</a> 构建"
+  }
+}
