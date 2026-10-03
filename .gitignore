@@ -24,12 +24,14 @@ dist-*/
 # 个人博客数据：内容与媒体不进仓库（详见 DEPLOY.md「内容与媒体备份」）
 src/content/
 public/uploads/
-profile.jpg
+# 根目录素材源文件（根目录锚定，不影响 public/ 下的运行副本入库）
+/profile.jpg
+/shubiao.png
 # 动态数据默认不入库（个人数据与运行时状态）；仅白名单放行页面基础数据，
 # 作为克隆者的默认站点骨架。后台新增的数据文件会保持忽略，需入库时在此显式放行。
+# 项目展示数据（projects.json）属个人数据，不入仓库（随数据备份进私库）。
 data/*
 !data/profile.json
-!data/projects.json
 !data/announcements.json
 
 # Logs and OS caches
@@ -38,6 +40,5 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .DS_Store
-shubiao.png
 # 字体源文件：运行副本在 public/fonts/（根目录锚定写法，不影响副本入库）
 /LXGWWenKaiMono-Medium.ttf

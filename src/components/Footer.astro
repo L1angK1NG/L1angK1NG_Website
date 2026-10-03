@@ -10,6 +10,10 @@ const year = new Date().getFullYear();
 const copyright = footer.copyright
   .replaceAll('{year}', String(year))
   .replaceAll('{author}', site.author);
+
+// 站点链接为占位符（example.com / localhost 等）时不渲染该区块，
+// 避免访客点到无效地址；配置真实域名后自动出现。
+const showSiteUrl = Boolean(site.url) && !/example\.(com|org|net)|localhost/i.test(site.url);
 ---
 
 <footer class="site-footer">
@@ -59,8 +63,12 @@ const copyright = footer.copyright
   <div class="site-footer__bar">
     <span>{copyright}</span>
     <span aria-hidden="true">·</span>
-    <a href={site.url}>{site.url.replace('https://', '')}</a>
-    <span aria-hidden="true">·</span>
+    {showSiteUrl && (
+      <>
+        <a href={site.url}>{site.url.replace(/^https?:\/\//, '')}</a>
+        <span aria-hidden="true">·</span>
+      </>
+    )}
     {/* 归属文字在后台保存时已做白名单净化，此处按含链接的富文本渲染 */}
     <span set:html={footer.attribution} />
   </div>

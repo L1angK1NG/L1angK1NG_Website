@@ -38,23 +38,31 @@ const restTags = tags.slice(16);
       <div class="taxonomy-panel">
         <h2><Icon name="layers" size={16} />分类</h2>
         <div class="term-list">
-          {categories.map((category) => (
-            <a href={getCategoryPath(category.name)}>
-              <span>{category.name}</span>
-              <small>{category.count}</small>
-            </a>
-          ))}
+          {categories.length > 0 ? (
+            categories.map((category) => (
+              <a href={getCategoryPath(category.name)}>
+                <span>{category.name}</span>
+                <small>{category.count}</small>
+              </a>
+            ))
+          ) : (
+            <p class="empty-hint">暂无分类。</p>
+          )}
         </div>
       </div>
       <div class="taxonomy-panel">
         <h2><Icon name="hash" size={16} />标签</h2>
         <div class="term-list">
-          {primaryTags.map((tag) => (
-            <a href={getTagPath(tag.name)}>
-              <span>{tag.name}</span>
-              <small>{tag.count}</small>
-            </a>
-          ))}
+          {primaryTags.length > 0 ? (
+            primaryTags.map((tag) => (
+              <a href={getTagPath(tag.name)}>
+                <span>{tag.name}</span>
+                <small>{tag.count}</small>
+              </a>
+            ))
+          ) : (
+            <p class="empty-hint">暂无标签。</p>
+          )}
         </div>
         {restTags.length > 0 && (
           <div class="term-more" data-term-more>

@@ -38,8 +38,13 @@
       })(),
     );
 
-    fetch('/api/public/announcements')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load fail'))))
+    // 走 API 哨兵门控：无后端时跳过请求（不产生控制台报错）。
+    const api = window.__blogApi;
+    const request = api?.gateFetch
+      ? api.gateFetch('/api/public/announcements')
+      : fetch('/api/public/announcements');
+    Promise.resolve(request)
+      .then((r) => (r && r.ok ? r.json() : Promise.reject(new Error('load fail'))))
       .then((data: { items?: Array<{ id: string; title: string; content: string; link?: string }> }) => {
         const item = (data.items ?? []).find((a) => a.id && !dismissed.has(a.id));
         if (!item || !body) return;
@@ -66,7 +71,7 @@
         });
       })
       .catch(() => {
-        /* 公告拉取失败不影响页面 */
+        /* 公告拉取失败不影响页面（降级标记已由哨兵处理） */
       });
   };
 

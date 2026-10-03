@@ -30,6 +30,7 @@ export function listTracks() {
     cover: clean(t.cover, 400),
     fileName: t.fileName || '',
     neteaseId: t.neteaseId || '',
+    url: clean(t.url, 500),
     enabled: t.enabled !== false,
     createdAt: Number(t.createdAt) || 0,
   }));
@@ -190,10 +191,26 @@ const fetchNeteaseOfficial = async (pathAndQuery) => {
     },
   });
   if (!res.ok) throw new Error(`网易云接口请求失败：${res.status}`);
-  return res.json();
+  const data = await res.json();
+  // 网易云对不存在/被风控的接口也返回 HTTP 200 + body code，需再判一层。
+  if (data && typeof data === 'object' && 'code' in data && Number(data.code) !== 200) {
+    throw new Error(`网易云接口返回异常（code ${data.code}）`);
+  }
+  return data;
 };
 
-// 把 Meting 返回的条目归一成内部曲目结构（不落播放外链，播放时再解析）。
+// Meting 的歌单条目往往不带 id 字段，但 url / lrc 里带歌曲 ID
+// （如 ...type=url&id=1974443815），优先从中提取，取不到再退回条目自带 id。
+export function extractNeteaseId(item) {
+  const direct = clean(item?.id ?? item?.neteaseId, 40);
+  if (/^\d+$/.test(direct)) return direct;
+  const fromUrl = String(item?.url ?? item?.src ?? item?.lrc ?? '').match(/[?&](?:id|songid)=(\d{4,})/i);
+  return fromUrl ? fromUrl[1] : '';
+}
+
+// 把 Meting 返回的条目归一成内部曲目结构。url 记录 Meting 解析链接作 fallback
+// 播放地址（服务端 302 到真实音频、长期有效）；正常情况下播放器优先用
+// neteaseId 走 /api/public/playlist/resolve 懒解析。
 const metingItemToTrack = (item) => ({
   id: newId(),
   source: 'netease',
@@ -201,18 +218,49 @@ const metingItemToTrack = (item) => ({
   artist: clean(item?.author ?? item?.artist, 120) || '未知歌手',
   cover: clean(item?.pic ?? item?.cover ?? item?.image, 400),
   fileName: '',
-  neteaseId: clean(item?.id, 40),
+  neteaseId: extractNeteaseId(item),
+  url: clean(item?.url ?? item?.src, 500),
   enabled: true,
   createdAt: Date.now(),
 });
 
+// 拉取网易云歌单曲目列表（Meting 优先，官方接口兜底），导入与后台预览共用。
+async function fetchNeteasePlaylistItems(playlistId) {
+  let data = null;
+  try {
+    data = await fetchMeting({ server: 'netease', type: 'playlist', id: playlistId });
+  } catch {
+    // Meting 不可用时用官方接口读歌单曲目列表。
+  }
+  if (!Array.isArray(data) || !data.length) {
+    // 官方歌单详情接口（带歌曲 id）；注意 /api/playlist/track/all 已不存在（404）。
+    const official = await fetchNeteaseOfficial(
+      `/api/v6/playlist/detail?id=${encodeURIComponent(playlistId)}&n=500`,
+    );
+    const songs = official?.playlist?.tracks ?? official?.songs ?? official?.tracks ?? [];
+    data = songs.map((song) => ({
+      id: song.id,
+      name: song.name,
+      artist: (song.ar ?? song.artists ?? []).map((a) => a.name).join('/'),
+      pic: song.al?.picUrl ?? song.album?.picUrl ?? '',
+    }));
+  }
+  return Array.isArray(data) ? data : [];
+}
+
 // 按歌曲 ID / 分享链接添加单曲或整个歌单。
-export async function importNetease(input) {
+// type 可显式指定 'song' | 'playlist'（如同步按钮传纯数字歌单 ID）；
+// 未指定时：分享链接按链接语义、纯数字默认按单曲，查无此曲再按歌单重试
+// （纯数字 ID 在网易云既可能是单曲也可能是歌单）。
+export async function importNetease(input, { type } = {}) {
   const parsed = parseNeteaseId(input);
   if (!parsed) throw new Error('无法识别的网易云链接或 ID');
+  const forced = type === 'song' || type === 'playlist' ? type : null;
+  const plainId = /^\d+$/.test(clean(input, 400));
+  const kind = forced || parsed.type;
   const added = [];
 
-  if (parsed.type === 'song') {
+  if (kind === 'song') {
     let item = null;
     try {
       const data = await fetchMeting({ server: 'netease', type: 'song', id: parsed.id });
@@ -221,47 +269,39 @@ export async function importNetease(input) {
       // Meting 全部不可用时用网易云官方接口补元数据（播放地址播放时再解析）。
     }
     if (!item) {
-      const official = await fetchNeteaseOfficial(
-        `/api/song/detail/?ids=%5B${encodeURIComponent(parsed.id)}%5D`,
-      );
-      const song = official?.songs?.[0];
-      if (!song) throw new Error('未找到该歌曲');
-      item = {
-        id: song.id,
-        name: song.name,
-        artist: (song.artists ?? []).map((a) => a.name).join('/'),
-        pic: song.album?.picUrl ?? '',
-      };
+      try {
+        const official = await fetchNeteaseOfficial(
+          `/api/song/detail/?ids=%5B${encodeURIComponent(parsed.id)}%5D`,
+        );
+        const song = official?.songs?.[0];
+        if (song) {
+          item = {
+            id: song.id,
+            name: song.name,
+            artist: (song.artists ?? []).map((a) => a.name).join('/'),
+            pic: song.album?.picUrl ?? '',
+          };
+        }
+      } catch {
+        /* 查不到按“不是单曲”处理 */
+      }
     }
-    const track = metingItemToTrack({ ...item, id: parsed.id });
-    const store = load();
-    if (store.tracks.some((t) => t.neteaseId === track.neteaseId)) {
-      throw new Error('该歌曲已在歌单中');
+    if (item) {
+      const track = metingItemToTrack({ ...item, id: parsed.id });
+      const store = load();
+      if (store.tracks.some((t) => t.neteaseId === track.neteaseId)) {
+        throw new Error('该歌曲已在歌单中');
+      }
+      store.tracks.push(track);
+      save(store);
+      added.push(track);
+      return { tracks: added, playlist: false };
     }
-    store.tracks.push(track);
-    save(store);
-    added.push(track);
-    return { tracks: added, playlist: false };
+    // 显式指定单曲就到此为止；纯数字未指定类型时继续按歌单重试。
+    if (forced === 'song' || !plainId) throw new Error('未找到该歌曲');
   }
 
-  let data = null;
-  try {
-    data = await fetchMeting({ server: 'netease', type: 'playlist', id: parsed.id });
-  } catch {
-    // Meting 不可用时用官方接口读歌单曲目列表。
-  }
-  if (!Array.isArray(data) || !data.length) {
-    const official = await fetchNeteaseOfficial(
-      `/api/playlist/track/all?id=${encodeURIComponent(parsed.id)}&limit=500&offset=0`,
-    );
-    const songs = official?.songs ?? official?.tracks ?? [];
-    data = songs.map((song) => ({
-      id: song.id,
-      name: song.name,
-      artist: (song.ar ?? song.artists ?? []).map((a) => a.name).join('/'),
-      pic: song.al?.picUrl ?? song.album?.picUrl ?? '',
-    }));
-  }
+  const data = await fetchNeteasePlaylistItems(parsed.id);
   if (!Array.isArray(data) || !data.length) throw new Error('歌单为空或无法读取');
   const store = load();
   const existing = new Set(store.tracks.map((t) => t.neteaseId).filter(Boolean));
@@ -275,7 +315,10 @@ export async function importNetease(input) {
     store.tracks.push(track);
     added.push(track);
   }
-  if (!added.length) throw new Error('歌单中的曲目都已存在');
+  // 重复同步是常态（歌单无新增时），按成功处理而不是报错。
+  if (!added.length) {
+    return { tracks: [], playlist: true, message: '歌单中的曲目都已在管理歌单中，无新增。' };
+  }
   save(store);
   return { tracks: added, playlist: true };
 }
@@ -285,21 +328,37 @@ export async function importNetease(input) {
 // （30 分钟），过期或播放失败后由前端触发重新解析。
 const urlCache = new Map(); // neteaseId -> { url, at }
 
+// 像音频直链的地址（带音频扩展名，可能带查询串）。
+const looksLikeDirectAudio = (u) => /\.(mp3|m4a|flac|aac|ogg|wav)(\?|$)/i.test(String(u || ''));
+
+// 跟随 302 解出最终音频直链。Meting 的 type=song / type=url 给出的都是
+// 「跳板链接」（302 到真实 CDN 音频）；<audio> 直接加载跳板会失败（实测
+// 服务端对浏览器请求回 522），必须在服务端解出最终地址再返回。
+// 用 GET 但不读 body（safeFetch 逐跳校验并跟随重定向，res.url 即最终地址）。
+async function unwrapRedirect(url) {
+  try {
+    const res = await safeFetch(url, { timeoutMs: 8000, headers: { Accept: '*/*' } });
+    const finalUrl = String(res.url ?? '');
+    return res.ok && /^https?:\/\//i.test(finalUrl) ? finalUrl : '';
+  } catch {
+    return '';
+  }
+}
+
 export async function resolvePlayUrl(neteaseId, { refresh = false } = {}) {
   const id = clean(neteaseId, 40);
   if (!id) throw new Error('缺少歌曲 ID');
   const hit = urlCache.get(id);
   if (!refresh && hit && Date.now() - hit.at < 30 * 60 * 1000 && hit.url) return hit.url;
 
-  // 优先 type=song：响应里的 url 多为可直接播放的地址
-  // （部分实现返回 302 包装链接，<audio> 会自动跟随）。
+  // 优先 type=song 取元数据与播放链接。
   let url = '';
   try {
     const data = await fetchMeting({ server: 'netease', type: 'song', id });
     const item = Array.isArray(data) ? data[0] : data;
     url = clean(item?.url ?? item?.src, 500);
   } catch {
-    // 换 type=url 兜底（返回 302 跳转到真实音频，这里取 Location）。
+    // 换 type=url 兜底（返回 302 跳转到真实音频，这里取跟随后的最终地址）。
     try {
       const bases = [API_BASE(), ...FALLBACK_BASES.filter((b) => b !== API_BASE())];
       for (const base of bases) {
@@ -311,7 +370,6 @@ export async function resolvePlayUrl(neteaseId, { refresh = false } = {}) {
           timeoutMs: 8000,
           headers: { Accept: 'application/json' },
         });
-        // safeFetch 跟随重定向后 res.url 即最终音频地址。
         const finalUrl = String(res.url ?? '');
         if (res.ok && /^https?:\/\//i.test(finalUrl)) {
           url = finalUrl;
@@ -324,22 +382,121 @@ export async function resolvePlayUrl(neteaseId, { refresh = false } = {}) {
   }
 
   if (!url || !/^https?:\/\//i.test(url)) throw new Error('该歌曲暂不可播放（可能受版权或 VIP 限制）');
+
+  // 拿到的是跳板链接就解出最终音频直链（已直链则跳过）。
+  if (!looksLikeDirectAudio(url)) {
+    url = (await unwrapRedirect(url)) || url;
+  }
+
   urlCache.set(id, { url, at: Date.now() });
   return url;
+}
+
+// —— 歌词（LRC 文本） ——
+// 与播放地址一样经本服务转发（浏览器不直连 Meting）。Meting 的 lrc 端点
+// 返回纯文本 LRC；网易云官方歌词接口返回 JSON，作兜底。缓存 24 小时
+// （歌词不会变；没有歌词也缓存空串，避免反复回源）。
+const lyricCache = new Map(); // neteaseId -> { at, lyric }
+
+export async function getLyric(neteaseId, { refresh = false } = {}) {
+  const id = clean(neteaseId, 40);
+  if (!id) throw new Error('缺少歌曲 ID');
+  const hit = lyricCache.get(id);
+  if (!refresh && hit && Date.now() - hit.at < 24 * 60 * 60 * 1000) return hit.lyric;
+
+  // 两个来源竞速取先回：Meting 的 lrc 端点（纯文本 LRC）时有抖动，
+  // 网易云官方歌词接口（JSON）较稳——谁先返回非空用谁，避免歌词拖着不显示。
+  const fromMeting = (async () => {
+    const bases = [API_BASE(), ...FALLBACK_BASES.filter((b) => b !== API_BASE())];
+    for (const base of bases) {
+      const endpoint = new URL(base);
+      endpoint.searchParams.set('server', 'netease');
+      endpoint.searchParams.set('type', 'lrc');
+      endpoint.searchParams.set('id', id);
+      const res = await safeFetch(endpoint.toString(), {
+        timeoutMs: 4000,
+        headers: { Accept: 'text/plain' },
+      });
+      if (res.ok) {
+        const text = String((await res.text()) ?? '').trim();
+        if (text) return text;
+      }
+    }
+    return '';
+  })();
+
+  const fromOfficial = (async () => {
+    try {
+      const data = await fetchNeteaseOfficial(
+        `/api/song/lyric?id=${encodeURIComponent(id)}&lv=1&kv=1&tv=-1`,
+      );
+      return String(data?.lrc?.lyric ?? '').trim();
+    } catch {
+      return '';
+    }
+  })();
+
+  const lyric = await Promise.any(
+    [fromMeting, fromOfficial].map((p) => p.then((v) => (v ? v : Promise.reject(new Error('empty'))))),
+  ).catch(() => '');
+
+  lyricCache.set(id, { at: Date.now(), lyric });
+  return lyric;
 }
 
 // 前台歌单接口：返回启用中的曲目。本地曲目附带直链；网易云曲目不预先
 // 逐条解析（歌单大时会串行请求太慢），由播放器在播放前调用 resolve
 // 接口懒解析，失败的曲目由播放器自动跳过。
+//
+// 管理歌单为空时的服务端兜底：代拉 .env 配置的网易云歌单返回。浏览器不直连
+// Meting（其 CDN 对浏览器请求有防盗链/抖动，实测会 522），全部经本服务转发。
+const neteaseFallbackCache = new Map(); // playlistId -> { at, tracks }
+
 export async function publicPlaylist() {
-  const tracks = listTracks().filter((t) => t.enabled);
-  return tracks.map((t) => {
-    if (t.source === 'local') {
-      return { ...t, url: `/api/music/file/${encodeURIComponent(t.fileName)}` };
+  const managed = listTracks().filter((t) => t.enabled);
+  if (managed.length) {
+    return managed.map((t) => {
+      if (t.source === 'local') {
+        return { ...t, url: `/api/music/file/${encodeURIComponent(t.fileName)}` };
+      }
+      // 优先带解析缓存里的新鲜音频直链；有 neteaseId 的曲目无缓存时留空，
+      // 交给播放器懒解析（返回 CDN 直链）；只有无 ID 的曲目才退回入库时保存
+      // 的 Meting 链接兜底（跳板链接直接给 <audio> 会加载失败）。
+      const hit = urlCache.get(t.neteaseId);
+      const fresh = hit && Date.now() - hit.at < 30 * 60 * 1000 ? hit.url : '';
+      return { ...t, url: fresh || (t.neteaseId ? '' : t.url || '') };
+    });
+  }
+
+  const playlistId = clean(process.env.PUBLIC_NETEASE_PLAYLIST_ID, 40);
+  if (!/^\d{1,20}$/.test(playlistId)) return [];
+  let hit = neteaseFallbackCache.get(playlistId);
+  if (!hit || Date.now() - hit.at > 10 * 60 * 1000) {
+    try {
+      const items = await fetchNeteasePlaylistItems(playlistId);
+      const tracks = items
+        .slice(0, 500)
+        .map((item) => {
+          const t = metingItemToTrack(item);
+          // 只回带歌曲 ID 的曲目（播放走懒解析）；跳板链接不下发给 <audio>。
+          return {
+            id: t.id,
+            source: 'netease',
+            title: t.title,
+            artist: t.artist,
+            cover: t.cover,
+            neteaseId: t.neteaseId,
+            url: '',
+            enabled: true,
+          };
+        })
+        .filter((t) => t.neteaseId);
+      hit = { at: Date.now(), tracks };
+      neteaseFallbackCache.set(playlistId, hit);
+    } catch {
+      // 拉取失败返回空列表，前端展示加载失败并可重试。
+      return [];
     }
-    // 缓存里已有解析结果就直接带上，否则留空给播放器懒解析。
-    const hit = urlCache.get(t.neteaseId);
-    const fresh = hit && Date.now() - hit.at < 30 * 60 * 1000 ? hit.url : '';
-    return { ...t, url: fresh };
-  });
+  }
+  return hit.tracks;
 }

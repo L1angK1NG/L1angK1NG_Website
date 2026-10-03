@@ -9,10 +9,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadEnv, ROOT } from './lib/env.mjs';
+import { logWarn } from './lib/log.mjs';
 
 loadEnv();
 
-const { newCsrfToken, safeEqual, requireCsrf, verifyCredentials, isLocked, recordFailure, clearFailures, MAX_LOGIN_ATTEMPTS } =
+const { newCsrfToken, requireCsrf, verifyCredentials, isLocked, recordFailure, clearFailures, MAX_LOGIN_ATTEMPTS } =
   await import('./lib/auth.mjs');
 const content = await import('./lib/content.mjs');
 const build = await import('./lib/build.mjs');
@@ -26,18 +27,101 @@ const app = express();
 const PORT = Number(process.env.ADMIN_PORT || 4000);
 const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
 
+// —— 会话密钥校验 ——
+// SESSION_SECRET 是会话 cookie 的签名密钥：漏配或使用示例占位值时，任何人
+// 都能伪造管理员会话。生产环境（NODE_ENV=production 或 COOKIE_SECURE=true）
+// 直接拒绝启动；开发环境回退到已知弱密钥但打印醒目警告。
+const WEAK_SECRETS = new Set(['dev-insecure-secret']);
+function resolveSessionSecret() {
+  const secret = (process.env.SESSION_SECRET || '').trim();
+  const isProduction = process.env.NODE_ENV === 'production' || COOKIE_SECURE;
+  const isWeak =
+    !secret ||
+    secret.length < 32 ||
+    WEAK_SECRETS.has(secret) ||
+    /^replace-me|^change-me|^your-|^example/i.test(secret);
+  if (!isWeak) return secret;
+  const reason = secret
+    ? `SESSION_SECRET 过弱（长度不足 32 或仍是示例占位值）`
+    : '未配置 SESSION_SECRET';
+  if (isProduction) {
+    console.error(
+      `[admin] ${reason}。生产环境必须配置随机长字符串后才能启动，` +
+        `可执行 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))" 生成。已拒绝启动。`,
+    );
+    process.exit(1);
+  }
+  console.warn(`[admin] ⚠ ${reason}，已回退到开发用弱密钥——会话可被伪造，仅限本地开发。`);
+  return 'dev-insecure-secret';
+}
+
 app.set('trust proxy', process.env.TRUST_PROXY || (COOKIE_SECURE ? 1 : false));
 app.disable('x-powered-by');
 app.use(express.json({ limit: '2mb' }));
+
+// —— 统一请求入口（常量基址 + 查询传目标） ——
+// 前台脚本与后台面板的动态目标一律经 /api/_ 转发：浏览器出站地址永远是
+// 固定字面基址，真实路径作为 r 查询参数——服务端白名单校验后内部派发，
+// 出站面收敛为单点，便于安全审计（目标仅限本服务自身的 /api 与 /admin 路由）。
+const DISPATCH_RE = /^(?:\/api\/(?!_)[\w\-/.]*|\/admin(?:\/[\w-]+)*)(?:\?[^#\s]*)?$/;
+
+app.all('/api/_', (req, res) => {
+  // r 参数为 base64(encodeURIComponent(目标路径))，解码后必须通过路由白名单。
+  let target = '';
+  try {
+    target = decodeURIComponent(Buffer.from(String(req.query.r || ''), 'base64').toString('ascii'));
+  } catch {
+    return res.status(400).json({ error: '非法的接口地址' });
+  }
+  if (!DISPATCH_RE.test(target)) {
+    return res.status(400).json({ error: '非法的接口地址' });
+  }
+  req.url = target;
+  app.handle(req, res);
+});
 
 app.use(
   '/admin-assets',
   express.static(path.join(ROOT, 'admin', 'public'), { maxAge: '1h' }),
 );
 
+// 共享的 HTML 白名单净化模块：前台评论与后台预览共用同一份源码，
+// 后台以 ES module 方式加载 src/lib/sanitize.js。
+app.get('/admin-assets/shared/sanitize.js', (_req, res) => {
+  res.type('application/javascript').sendFile(path.join(ROOT, 'src', 'lib', 'sanitize.js'));
+});
+
+// 共享的字体分片声明（与前台 src/styles/fonts.css 同一份源码）。
+app.get('/admin-assets/fonts.css', (_req, res) => {
+  res.type('text/css').sendFile(path.join(ROOT, 'src', 'styles', 'fonts.css'));
+});
+
+// —— 安全响应头 ——
+// 应用层自带基础安全头（nginx 配置同样提供，双保险）：即使部署者跳过 nginx
+// 直连端口也不至于完全裸奔。CSP 先以 report-only 下发，观察兼容性后再收紧。
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
+  if (COOKIE_SECURE) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  // 报告型 CSP：不限制现有功能，仅收集潜在违规（违规会打到浏览器控制台，
+  // 不影响页面）。稳定运行后可切换为强制策略。
+  res.setHeader(
+    'Content-Security-Policy-Report-Only',
+    "default-src 'self'; img-src 'self' data: https:; media-src 'self' https:; " +
+      "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+      "connect-src 'self' https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+  );
+  next();
+});
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || 'dev-insecure-secret',
+    secret: resolveSessionSecret(),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -206,7 +290,7 @@ app.post('/api/login', requireCsrf, wrap(async (req, res) => {
   if (lockedFor > 0) return res.status(429).json({ error: `登录尝试过于频繁，请 ${lockedFor} 秒后再试。` });
 
   const { username, password } = req.body || {};
-  if (!verifyCredentials(String(username || ''), String(password || ''))) {
+  if (!(await verifyCredentials(String(username || ''), String(password || '')))) {
     const used = recordFailure(req);
     const remaining = Math.max(0, MAX_LOGIN_ATTEMPTS - used);
     const hint = remaining > 0
@@ -228,7 +312,7 @@ app.post('/api/login', requireCsrf, wrap(async (req, res) => {
   });
 }));
 
-app.post('/api/logout', (req, res) => {
+app.post('/api/logout', requireCsrf, (req, res) => {
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
     res.json({ ok: true });
@@ -278,7 +362,7 @@ app.post('/api/delete/:collection', requireApiAuth, requireCsrf, wrap(async (req
   }
 }));
 
-app.post('/api/preview', requireApiAuth, wrap(async (req, res) => {
+app.post('/api/preview', requireApiAuth, requireCsrf, wrap(async (req, res) => {
   res.json({ html: renderPreview(req.body?.markdown || '') });
 }));
 
@@ -292,7 +376,8 @@ function listMedia() {
       .filter((e) => e.isFile())
       .map((e) => ({ name: e.name, url: `/uploads/${e.name}` }))
       .sort((a, b) => b.name.localeCompare(a.name));
-  } catch {
+  } catch (err) {
+    logWarn('媒体目录读取失败', err);
     return [];
   }
 }
@@ -301,21 +386,41 @@ app.get('/api/media', requireApiAuth, (_req, res) => res.json({ items: listMedia
 
 // 基于内容哈希去重：字节完全相同的文件无论上传时叫什么名字，都会映射到
 // 同一个已存储文件，这样多篇文章共享一份物理副本，而不是堆叠一堆带时间戳的
-// 重复文件。uploads 文件夹很小，因此每次上传时对现有文件逐一计算哈希开销
-// 很低，也无需维护任何索引状态。
-function findUploadByHash(hash) {
-  try {
-    if (!fs.existsSync(UPLOAD_DIR)) return null;
-    for (const entry of fs.readdirSync(UPLOAD_DIR, { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      const digest = crypto.createHash('sha256').update(fs.readFileSync(path.join(UPLOAD_DIR, entry.name))).digest('hex');
-      if (digest === hash) return entry.name;
+// 重复文件。哈希索引在首次使用时异步构建、之后增量维护（上传/删除同步更新），
+// 避免每次上传都对目录内文件做同步全量哈希阻塞事件循环。
+const uploadHashMap = new Map(); // 文件名 -> sha256
+let uploadHashReady = null;
+
+function ensureUploadHashIndex() {
+  if (uploadHashReady) return uploadHashReady;
+  uploadHashReady = (async () => {
+    try {
+      if (!fs.existsSync(UPLOAD_DIR)) return;
+      const entries = (await fs.promises.readdir(UPLOAD_DIR, { withFileTypes: true })).filter((e) => e.isFile());
+      await Promise.all(
+        entries.map(async (entry) => {
+          const buf = await fs.promises.readFile(path.join(UPLOAD_DIR, entry.name));
+          uploadHashMap.set(entry.name, crypto.createHash('sha256').update(buf).digest('hex'));
+        }),
+      );
+    } catch (err) {
+      // 索引构建失败时退化为不去重（每次存新副本），不影响上传
+      logWarn('上传哈希索引构建失败', err);
     }
-  } catch {
-    /* 出现任何异常时直接跳过，存储一份新副本 */
+  })();
+  return uploadHashReady;
+}
+
+function findUploadByHash(hash) {
+  for (const [name, digest] of uploadHashMap) {
+    if (digest === hash) return name;
   }
   return null;
 }
+
+// 上传内容校验（文件头 magic number + SVG 脚本剥离）实现在
+// admin/lib/upload-guard.mjs，这里只做接线；规则与单元测试见该模块。
+import { MAGIC_CHECKS, looksLikeSvg, sanitizeSvg } from './lib/upload-guard.mjs';
 
 // 媒体引用就存在于 Markdown 内容本身（封面 frontmatter 以及正文中的图片/链接）
 // —— 没有数据库，因此引用扫描会遍历内容文件。原始 URL 和百分号编码后的 URL
@@ -342,7 +447,16 @@ app.post('/api/upload', requireApiAuth, requireCsrf, express.raw({ type: () => t
   if (!SAFE_EXT.has(ext)) return res.status(400).json({ error: '不支持的文件类型' });
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: '文件为空' });
 
-  const incomingHash = crypto.createHash('sha256').update(req.body).digest('hex');
+  // 文件头必须与扩展名一致：防止把任意内容伪装成图片扩展名上传。
+  const magic = MAGIC_CHECKS[ext];
+  if (magic && !magic(req.body)) {
+    return res.status(400).json({ error: '文件内容与扩展名不符，已拒绝上传' });
+  }
+  // SVG 剥离脚本能力后再入库。
+  const payload = ext === '.svg' || looksLikeSvg(req.body) ? sanitizeSvg(req.body) : req.body;
+
+  await ensureUploadHashIndex();
+  const incomingHash = crypto.createHash('sha256').update(payload).digest('hex');
   const existingName = findUploadByHash(incomingHash);
   if (existingName) {
     return res.json({
@@ -360,8 +474,9 @@ app.post('/api/upload', requireApiAuth, requireCsrf, express.raw({ type: () => t
     .replace(/^-+|-+$/g, '')
     .slice(0, 40) || 'image';
   const name = `${Date.now()}-${base}${ext}`;
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  fs.writeFileSync(path.join(UPLOAD_DIR, name), req.body);
+  await fs.promises.mkdir(UPLOAD_DIR, { recursive: true });
+  await fs.promises.writeFile(path.join(UPLOAD_DIR, name), payload);
+  uploadHashMap.set(name, incomingHash);
   res.json({ ok: true, url: `/uploads/${name}`, name, duplicate: false });
 }));
 
@@ -379,6 +494,7 @@ app.post('/api/media/delete', requireApiAuth, requireCsrf, wrap(async (req, res)
     });
   }
   fs.unlinkSync(filePath);
+  uploadHashMap.delete(name);
   res.json({ ok: true, message: '已删除。' });
 }));
 

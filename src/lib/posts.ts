@@ -84,15 +84,18 @@ export const getPostUrl = (post: BlogPost) => absoluteUrl(getPostPath(post));
 export const getPostUpdatedDate = (post: BlogPost) =>
   post.data.updated ?? post.data.date;
 
+// 阅读速度：每分钟约 350 个阅读单元（汉字计 1、英文单词计 1）。
+const READING_UNITS_PER_MINUTE = 350;
+
 export const getReadingMinutes = (post: BlogPost) => {
   const body = (post as BlogPost & { body?: string }).body ?? '';
-  const cjkChars = body.match(/[\u4e00-\u9fff]/g)?.length ?? 0;
+  const cjkChars = body.match(/[一-鿿]/g)?.length ?? 0;
   const words = body
-    .replace(/[\u4e00-\u9fff]/g, ' ')
+    .replace(/[一-鿿]/g, ' ')
     .match(/[A-Za-z0-9_]+/g)?.length ?? 0;
   const readingUnits = cjkChars + words;
 
-  return Math.max(1, Math.ceil(readingUnits / 350));
+  return Math.max(1, Math.ceil(readingUnits / READING_UNITS_PER_MINUTE));
 };
 
 export const getAdjacentPosts = (posts: BlogPost[], currentPost: BlogPost) => {

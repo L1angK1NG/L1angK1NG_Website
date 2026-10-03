@@ -3,8 +3,18 @@ import rehypeImgAttrs from './src/lib/rehype-img-attrs.mjs';
 import rehypeLegacyShortcodes from './src/lib/rehype-legacy-shortcodes.mjs';
 import remarkLegacyShortcodes from './src/lib/remark-legacy-shortcodes.mjs';
 
+// 构建期配置校验：SITE_URL 用于 RSS / sitemap / canonical / 页脚站点链接，
+// 未配置或仍是占位符时给出醒目警告（页脚会隐藏站点链接区块，不渲染占位 URL）。
+const SITE_URL = process.env.SITE_URL ?? 'https://example.com';
+if (!process.env.SITE_URL || /example\.(com|org|net)|localhost/i.test(SITE_URL)) {
+  console.warn(
+    `[astro.config] ⚠ SITE_URL 未配置或仍是占位符（当前：${SITE_URL}）。\n` +
+      '  RSS / sitemap / canonical 将使用该值，请在 .env 的 SITE_URL 填写正式域名。',
+  );
+}
+
 export default defineConfig({
-  site: process.env.SITE_URL ?? 'https://example.com',
+  site: SITE_URL,
   markdown: {
     remarkPlugins: [remarkLegacyShortcodes],
     rehypePlugins: [rehypeLegacyShortcodes, rehypeImgAttrs],

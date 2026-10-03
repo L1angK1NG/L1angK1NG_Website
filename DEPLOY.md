@@ -138,6 +138,10 @@ server {
 }
 ```
 
+> **安全响应头**：后台服务自带基础安全头（`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`、`HSTS`（`COOKIE_SECURE=true` 时）、CSP report-only），nginx 无需重复配置——即使跳过 nginx 直连 4000 端口也有基本防护。前台静态文件可按需在 nginx 补充缓存与压缩策略。
+>
+> **会话存储**：后台会话使用 express-session 默认的内存存储（MemoryStore）——服务重启后所有登录态失效（单管理员场景可接受）；如需重启不掉线可自行接入持久化 store（如 `connect-sqlite3`）。会话 cookie 为 `httpOnly + SameSite=Strict`，有效期 7 天。
+
 启用并配置 HTTPS（推荐 certbot）：
 
 ```bash

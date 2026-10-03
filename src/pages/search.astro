@@ -31,32 +31,60 @@ import BaseLayout from '../layouts/BaseLayout.astro';
     <p class="search-status" data-search-status>正在加载索引...</p>
     <div class="search-results post-list" data-search-results></div>
   </section>
+</BaseLayout>
 
-  <script is:inline data-astro-rerun>
-    const form = document.querySelector('.search-box');
-    const input = document.querySelector('#search-input');
-    const status = document.querySelector('[data-search-status]');
-    const results = document.querySelector('[data-search-results]');
+<script>
+  // 客户端搜索：对构建期生成的 search.json 索引做加权匹配。
+  // 输入带 150ms 防抖，避免每个按键都全量扫描索引。
+  import { esc } from '../lib/sanitize.js';
+
+  // 搜索权重（标题 > 分类 > 标签 > 正文）。
+  const WEIGHT_TITLE = 4;
+  const WEIGHT_CATEGORY = 3;
+  const WEIGHT_TAGS = 2;
+  const WEIGHT_TEXT = 1;
+  // 输入防抖间隔。
+  const SEARCH_DEBOUNCE_MS = 150;
+
+  interface SearchItem {
+    title: string;
+    category: string;
+    tags: string[];
+    text: string;
+    url: string;
+    date: string;
+    description: string;
+  }
+
+  // 索引只请求一次，换页回来直接复用。
+  let postsPromise: Promise<SearchItem[]> | null = null;
+  const loadPosts = () => {
+    postsPromise ??= fetch('/search.json')
+      .then((response) => response.json())
+      .then((items: SearchItem[]) => (Array.isArray(items) ? items : []));
+    return postsPromise;
+  };
+
+  const initSearch = () => {
+    const form = document.querySelector<HTMLFormElement>('.search-box');
+    const input = document.querySelector<HTMLInputElement>('#search-input');
+    const status = document.querySelector<HTMLElement>('[data-search-status]');
+    const results = document.querySelector<HTMLElement>('[data-search-results]');
+    if (!form || !input || !status || !results || form.dataset.ready === '1') return;
+    form.dataset.ready = '1';
+
     const params = new URLSearchParams(window.location.search);
     const initialQuery = params.get('q') ?? '';
-    let posts = [];
+    let posts: SearchItem[] = [];
 
-    const escapeHtml = (value) =>
-      String(value)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#039;');
-
-    const normalize = (value) => value.trim().toLowerCase();
+    const normalize = (value: string) => value.trim().toLowerCase();
 
     const renderIdle = () => {
       status.textContent = `已索引 ${posts.length} 篇文章。`;
       results.innerHTML = '';
     };
 
-    const renderResults = (query) => {
+    const renderResults = (query: string) => {
       const normalizedQuery = normalize(query);
 
       if (!normalizedQuery) {
@@ -69,10 +97,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         .map((post) => ({
           post,
           score: terms.reduce((score, term) => {
-            if (post.title.toLowerCase().includes(term)) return score + 4;
-            if (post.category.toLowerCase().includes(term)) return score + 3;
-            if (post.tags.join(' ').toLowerCase().includes(term)) return score + 2;
-            if (post.text.includes(term)) return score + 1;
+            if (post.title.toLowerCase().includes(term)) return score + WEIGHT_TITLE;
+            if (post.category.toLowerCase().includes(term)) return score + WEIGHT_CATEGORY;
+            if (post.tags.join(' ').toLowerCase().includes(term)) return score + WEIGHT_TAGS;
+            if (post.text.includes(term)) return score + WEIGHT_TEXT;
             return score;
           }, 0),
         }))
@@ -87,19 +115,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         .map(({ post }) => {
           const tags = post.tags
             .slice(0, 4)
-            .map((tag) => `<span>${escapeHtml(tag)}</span>`)
+            .map((tag) => `<span>${esc(tag)}</span>`)
             .join('');
 
           return `
             <article class="post-row post-row--plain is-revealed">
-              <a href="${escapeHtml(post.url)}">
+              <a href="${esc(post.url)}">
                 <div class="post-row__main">
                   <div class="post-meta">
-                    ${post.category ? `<span>${escapeHtml(post.category)}</span>` : ''}
-                    ${post.date ? `<span>${escapeHtml(post.date)}</span>` : ''}
+                    ${post.category ? `<span>${esc(post.category)}</span>` : ''}
+                    ${post.date ? `<span>${esc(post.date)}</span>` : ''}
                   </div>
-                  <h3>${escapeHtml(post.title)}</h3>
-                  ${post.description ? `<p>${escapeHtml(post.description)}</p>` : ''}
+                  <h3>${esc(post.title)}</h3>
+                  ${post.description ? `<p>${esc(post.description)}</p>` : ''}
                   ${tags ? `<div class="tag-list" aria-label="标签">${tags}</div>` : ''}
                 </div>
               </a>
@@ -109,7 +137,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         .join('');
     };
 
-    const syncUrl = (query) => {
+    const syncUrl = (query: string) => {
       const nextUrl = new URL(window.location.href);
 
       if (query) {
@@ -132,12 +160,16 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       runSearch();
     });
 
-    input.addEventListener('input', runSearch);
+    // 防抖：连续输入只在停顿 150ms 后扫描一次索引。
+    let debounceTimer = 0;
+    input.addEventListener('input', () => {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(runSearch, SEARCH_DEBOUNCE_MS);
+    });
 
     input.value = initialQuery;
 
-    fetch('/search.json')
-      .then((response) => response.json())
+    loadPosts()
       .then((items) => {
         posts = items;
         renderResults(input.value);
@@ -145,5 +177,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       .catch(() => {
         status.textContent = '搜索索引加载失败。';
       });
-  </script>
-</BaseLayout>
+  };
+
+  initSearch();
+  document.addEventListener('astro:page-load', initSearch);
+</script>

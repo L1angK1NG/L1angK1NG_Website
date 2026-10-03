@@ -7,7 +7,7 @@
 //   public/uploads/   后台上传的媒体
 //   data/             动态数据（评论/友链/歌单/公告/统计/项目/导航/页面文案）
 //   profile.jpg       个人头像
-//   .env              站点配置与后台凭据（可经 BACKUP_INCLUDE_ENV=false 关闭）
+//   .env              站点配置与后台凭据（默认不备份，BACKUP_INCLUDE_ENV=true 显式开启）
 //
 // 构建产物 dist/、releases/ 不备份：源码 + 以上数据即可随时完整重建。
 //
@@ -21,6 +21,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { ROOT } from './env.mjs';
 import { readJSON, writeJSON } from './store.mjs';
+import { logWarn } from './log.mjs';
 
 const BACKUP_ENABLED = (process.env.BACKUP_ENABLED ?? 'true') !== 'false';
 // 临时备份仓库：系统临时目录下的固定名目录，推送完成后整个删除，本地零残留。
@@ -92,8 +93,10 @@ export function saveBackupRemoteUrl(input) {
       : '已保存。当前未配置远端仓库地址，下次发布将跳过备份。',
   };
 }
-// .env 含密码哈希与会话密钥，私库务必私有；默认备份以保证可完整恢复
-const INCLUDE_ENV = (process.env.BACKUP_INCLUDE_ENV ?? 'true') !== 'false';
+// .env 含密码哈希与会话密钥，默认不随备份推送（缩小密钥扩散面）：
+// 私库一旦误公开、token 泄露或协作者加入，随备份走的 .env 即外泄。
+// 确有异地恢复需求时显式设 BACKUP_INCLUDE_ENV=true 开启，并保证私库严格私有。
+const INCLUDE_ENV = process.env.BACKUP_INCLUDE_ENV === 'true';
 // fetch/push 等待上限：网络差时别让「构建发布」按钮无限等待
 const NET_TIMEOUT_MS = 90_000;
 
@@ -176,23 +179,25 @@ const README_TEXT = `# L1angK1NG_Website 数据备份
 - \`public/uploads/\` 后台上传的媒体
 - \`data/\`           动态数据（评论/友链/歌单/公告/统计/项目/导航/页面文案）
 - \`profile.jpg\`     个人头像
-- \`.env\`            站点配置与后台凭据（含密码哈希与会话密钥——**本仓库务必保持私有**）
+- \`.env\`            站点配置与后台凭据（默认不备份；BACKUP_INCLUDE_ENV=true 时包含，
+  含密码哈希与会话密钥——**本仓库务必保持私有**）
 
 构建产物不在备份范围：源码 + 以上数据即可随时完整重建。
 
 ## 恢复步骤
 
 1. 克隆公开源码仓库，\`npm install\`
-2. 克隆本仓库，把 \`src/content\`、\`public/uploads\`、\`data\`、\`profile.jpg\`、\`.env\`
-   拷贝到项目对应位置
-3. \`npm run deploy\` 重新构建发布
+2. 克隆本仓库，把 \`src/content\`、\`public/uploads\`、\`data\`、\`profile.jpg\`
+   （以及备份中包含 \`.env\` 时的 \`.env\`）拷贝到项目对应位置
+3. 若备份不含 \`.env\`：从密码管理器另行恢复站点配置与后台凭据
+4. \`npm run deploy\` 重新构建发布
 `;
 
 function writeReadme() {
   try {
     fs.writeFileSync(path.join(BACKUP_TMP_DIR, 'BACKUP-README.md'), README_TEXT, 'utf8');
-  } catch {
-    /* 忽略 */
+  } catch (err) {
+    logWarn('备份说明文件写入失败', err);
   }
 }
 

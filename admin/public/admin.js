@@ -1,8 +1,13 @@
-// 后台面板客户端。原生 JS，无需构建步骤。携带 CSRF token 调用 JSON API，
-// 驱动编辑器实时预览、媒体上传和构建任务。
+// 后台面板客户端。原生 JS（ES module），无需构建步骤。携带 CSRF token 调用
+// JSON API，驱动编辑器实时预览、媒体上传和构建任务。
+// HTML 净化复用前台同一套白名单逻辑（/admin-assets/shared/sanitize.js）；
+// 无刷新导航的页面请求走 /admin-assets/page-loader.js（路由白名单在彼处校验）。
+import { sanitizeHtml } from '/admin-assets/shared/sanitize.js';
+import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js';
+
 (() => {
-  const boot = window.__BOOT__ || {};
-  const csrfToken = boot.csrfToken || '';
+  // 页面级启动数据：无刷新导航换页后由 initPage 重新读取（boot / csrf 都是活值）。
+  let boot = window.__BOOT__ || {};
 
   const toastEl = () => document.getElementById('toast');
   function toast(message, isError) {
@@ -11,22 +16,60 @@
     el.textContent = message;
     el.classList.toggle('toast--error', !!isError);
     el.hidden = false;
+    // 滑入 → 停留 → 滑出（两段式，避免 display 切换的生硬感）。
+    el.classList.remove('is-out');
+    requestAnimationFrame(() => el.classList.add('is-in'));
     clearTimeout(toast._t);
     toast._t = setTimeout(() => {
-      el.hidden = true;
+      el.classList.remove('is-in');
+      el.classList.add('is-out');
+      setTimeout(() => {
+        el.hidden = true;
+        el.classList.remove('is-out');
+      }, 250);
     }, 3200);
   }
 
+  // 面板/编辑器露出时播放入场动画（每次调用都重新触发）。
+  const reveal = (el) => {
+    if (!el) return;
+    el.hidden = false;
+    el.classList.remove('pop-in');
+    void el.offsetWidth;
+    el.classList.add('pop-in');
+  };
+
+  const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // 后台 API 路由白名单：只允许 /api/ 下的相对路径（可带查询串）——
+  // 所有请求都是发给本后台自身的接口，其余地址一律拒绝。
+  const API_ROUTE_RE = /^\/api\/[\w\-/.]*(?:\?[^#\s]*)?$/;
+
+  // 统一请求网关：出站地址固定为 /api/_ 基址，真实接口路径经 base64 放进
+  // 查询参数（URL 中不出现路径形态数据），服务端解码白名单校验后内部派发。
+  function apiGatewayUrl(target) {
+    const url = new URL('/api/_', window.location.href);
+    url.searchParams.set('r', btoa(encodeURIComponent(String(target || ''))));
+    return url;
+  }
+
   async function api(path, { method = 'GET', body, raw, noAuthRedirect } = {}) {
+    const endpoint = String(path || '');
+    if (!API_ROUTE_RE.test(endpoint)) {
+      throw new Error('非法的接口地址');
+    }
     const opts = { method, headers: {} };
-    if (csrfToken) opts.headers['X-CSRF-Token'] = csrfToken;
+    const token = window.__BOOT__?.csrfToken;
+    if (token) opts.headers['X-CSRF-Token'] = token;
     if (raw) {
       opts.body = body;
     } else if (body !== undefined) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
     }
-    const res = await fetch(path, opts);
+    const requestUrl = apiGatewayUrl(endpoint);
+    const res = await fetch(requestUrl.href, opts);
     if (res.status === 401 && !noAuthRedirect) {
       window.location.href = '/admin/login';
       throw new Error('未登录');
@@ -101,6 +144,32 @@
     });
   }
 
+  // 社交链接行的新增/删除用事件委托（文档级，只绑一次；行可任意重渲染）。
+  const socialRowHtml = (ns, i) => `<div class="kv-row" data-social="${ns}" data-index="${i}">
+        <input class="input" data-sfield="icon" value="" placeholder="图标名 如 bilibili" />
+        <input class="input" data-sfield="label" value="" placeholder="显示名" />
+        <input class="input" data-sfield="href" value="" placeholder="链接地址" />
+        <button type="button" class="btn btn--sm btn--danger" data-social-remove="${ns}" data-index="${i}">删</button>
+      </div>`;
+
+  document.addEventListener('click', (e) => {
+    const addBtn = e.target.closest('[data-social-add]');
+    if (addBtn) {
+      const ns = addBtn.getAttribute('data-social-add');
+      const box = document.getElementById(`p-${ns}-socials`);
+      if (box) box.insertAdjacentHTML('beforeend', socialRowHtml(ns, Date.now()));
+      return;
+    }
+    const rmBtn = e.target.closest('[data-social-remove]');
+    if (rmBtn) rmBtn.closest('.kv-row')?.remove();
+  });
+
+  // ===== 页面级初始化 =====
+  // 每次页面内容切换（无刷新导航 / 操作后刷新）都会重跑：重新读取 boot 数据、
+  // 为新 DOM 绑定交互。登录/退出/文档级委托等常驻绑定都在本函数之外。
+  function initPage() {
+    boot = window.__BOOT__ || {};
+
   // —— 编辑器 ——
   const bodyArea = document.getElementById('body');
   const slugInput = document.getElementById('slug');
@@ -129,15 +198,16 @@
         if (toPreview) {
           try {
             const { html } = await api('/api/preview', { method: 'POST', body: { markdown: bodyArea.value } });
-            previewEl.innerHTML = html;
+            // 预览输出过白名单净化再注入：即使内容含恶意 HTML 也不会执行。
+            previewEl.innerHTML = sanitizeHtml(html, { extended: true });
           } catch (err) {
             previewEl.textContent = '预览失败：' + err.message;
           }
-          previewEl.hidden = false;
+          reveal(previewEl);
           bodyArea.hidden = true;
         } else {
           previewEl.hidden = true;
-          bodyArea.hidden = false;
+          reveal(bodyArea);
         }
       });
     });
@@ -159,7 +229,7 @@
             body: { id, originalId: boot.originalId || null, fields, body: bodyArea.value },
           });
           toast(result.message || '已保存');
-          if (boot.isNew) window.location.href = `/admin/${collection}/edit?path=${encodeURIComponent(result.id)}`;
+          if (boot.isNew) navigate(`/admin/${collection}/edit?path=${encodeURIComponent(result.id)}`);
           else saveBtn.textContent = '已保存';
         } catch (err) {
           toast(err.message, true);
@@ -205,7 +275,7 @@
   if (uploadInput) {
     uploadInput.addEventListener('change', () => {
       const file = uploadInput.files && uploadInput.files[0];
-      if (file) uploadFile(file, () => window.location.reload());
+      if (file) uploadFile(file, () => refreshPage());
     });
   }
   if (uploadZone) {
@@ -218,7 +288,7 @@
       e.preventDefault();
       uploadZone.classList.remove('upload-zone--over');
       const file = e.dataTransfer.files && e.dataTransfer.files[0];
-      if (file) uploadFile(file, () => window.location.reload());
+      if (file) uploadFile(file, () => refreshPage());
     });
   }
 
@@ -280,7 +350,8 @@
     const el = document.getElementById(id);
     if (el) el.value = v ?? '';
   };
-  const reload = () => window.location.reload();
+  // 操作成功后的「刷新」只换内容不整页重载（无刷新导航，保留滚动之外的一切状态）。
+  const reload = () => refreshPage();
 
   // ===== 页面内容（主页 hero + 关于页 + 页脚） =====
   const profileSave = document.getElementById('profile-save');
@@ -292,26 +363,6 @@
         label: row.querySelector('[data-sfield="label"]').value.trim(),
         href: row.querySelector('[data-sfield="href"]').value.trim(),
       })).filter((s) => s.label && (!requireHref || s.href));
-
-    const socialRowHtml = (ns, i) => `<div class="kv-row" data-social="${ns}" data-index="${i}">
-        <input class="input" data-sfield="icon" value="" placeholder="图标名 如 bilibili" />
-        <input class="input" data-sfield="label" value="" placeholder="显示名" />
-        <input class="input" data-sfield="href" value="" placeholder="链接地址" />
-        <button type="button" class="btn btn--sm btn--danger" data-social-remove="${ns}" data-index="${i}">删</button>
-      </div>`;
-
-    // 事件委托：新增/删除社交链接行（重渲染后依然有效）。
-    document.addEventListener('click', (e) => {
-      const addBtn = e.target.closest('[data-social-add]');
-      if (addBtn) {
-        const ns = addBtn.getAttribute('data-social-add');
-        const box = document.getElementById(`p-${ns}-socials`);
-        box.insertAdjacentHTML('beforeend', socialRowHtml(ns, Date.now()));
-        return;
-      }
-      const rmBtn = e.target.closest('[data-social-remove]');
-      if (rmBtn) rmBtn.closest('.kv-row').remove();
-    });
 
     profileSave.addEventListener('click', async () => {
       profileSave.disabled = true;
@@ -362,7 +413,7 @@
   const projectEditor = document.getElementById('project-editor');
   if (projectEditor) {
     const openEditor = (p) => {
-      projectEditor.hidden = false;
+      reveal(projectEditor);
       document.getElementById('project-editor-title').textContent = p ? '编辑项目' : '新建项目';
       setVal('pj-id', p?.id || '');
       setVal('pj-title', p?.title || '');
@@ -504,7 +555,7 @@
   const friendEditor = document.getElementById('friend-editor');
   if (friendEditor) {
     const openEditor = (f) => {
-      friendEditor.hidden = false;
+      reveal(friendEditor);
       document.getElementById('friend-editor-title').textContent = f ? '编辑友链' : '手动添加友链';
       setVal('fr-id', f?.id || '');
       setVal('fr-name', f?.name || '');
@@ -629,13 +680,12 @@
 
     // 试听 / 上下架 / 编辑 / 删除
     musicTable.addEventListener('click', async (e) => {
-      const trackId = (btn) => btn.getAttribute('data-track-preview') || btn.getAttribute('data-track-toggle') || btn.getAttribute('data-track-edit') || btn.getAttribute('data-track-delete');
       const previewBtn = e.target.closest('[data-track-preview]');
       if (previewBtn) {
         const { tracks } = await api('/api/manage/music');
         const track = tracks.find((t) => t.id === previewBtn.getAttribute('data-track-preview'));
         if (!track) return;
-        previewAudio.hidden = false;
+        reveal(previewAudio);
         if (track.source === 'local') {
           previewAudio.src = `/api/music/file/${encodeURIComponent(track.fileName)}`;
         } else {
@@ -668,7 +718,7 @@
         const track = tracks.find((t) => t.id === editBtn.getAttribute('data-track-edit'));
         if (!track) return;
         const editor = document.getElementById('track-editor');
-        editor.hidden = false;
+        reveal(editor);
         setVal('tr-id', track.id);
         setVal('tr-title', track.title);
         setVal('tr-artist', track.artist);
@@ -742,7 +792,7 @@
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
     const openEditor = (a) => {
-      annEditor.hidden = false;
+      reveal(annEditor);
       document.getElementById('ann-editor-title').textContent = a ? '编辑公告' : '新建公告';
       setVal('an-id', a?.id || '');
       setVal('an-title', a?.title || '');
@@ -825,7 +875,7 @@
 
     const replyEditor = document.getElementById('comment-reply-editor');
     bind('[data-comment-reply]', 'click', (e) => {
-      replyEditor.hidden = false;
+      reveal(replyEditor);
       setVal('cr-id', e.target.getAttribute('data-comment-reply'));
       replyEditor.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
@@ -911,12 +961,198 @@
           body: { remoteUrl: backupRemoteInput.value.trim() },
         });
         toast(result.message || '已保存');
-        // 刷新页面以展示新的「当前生效」地址与来源
-        setTimeout(() => window.location.reload(), 800);
+        // 刷新内容以展示新的「当前生效」地址与来源（无刷新导航）
+        setTimeout(() => refreshPage(), 800);
       } catch (err) {
         toast(err.message, true);
         backupSaveBtn.disabled = false;
       }
     });
   }
+  }
+
+  // ===== 无刷新导航（SPA） =====
+  // 侧栏与内容内链接点击时只替换 <main> 内容并重新绑定，不再整页重载：
+  // 切换页面无白屏闪烁、无强制刷新感，操作成功后的「刷新」同样只换内容。
+  // 页面请求统一走 page-loader.js（路由白名单校验集中在彼处）。
+  const mainEl = document.querySelector('.main');
+  let navSeq = 0;
+  let navCtrl = null;
+
+  // 顶部细进度条：导航请求期间流动提示。
+  const navProgress = document.createElement('div');
+  navProgress.className = 'nav-progress';
+  document.body.append(navProgress);
+  const progressStart = () => navProgress.classList.add('is-active');
+  const progressDone = () => navProgress.classList.remove('is-active');
+
+  // 统计数字入场滚动（从 0 缓动到目标值）。
+  function animateCounters() {
+    if (reducedMotion()) return;
+    document.querySelectorAll('.stat__value').forEach((el) => {
+      const raw = el.textContent.trim();
+      const m = raw.match(/^([\d,]+)(.*)$/);
+      if (!m) return;
+      const target = Number(m[1].replace(/,/g, ''));
+      if (!Number.isFinite(target) || target === 0) return;
+      const suffix = m[2];
+      const started = performance.now();
+      const step = (now) => {
+        const p = Math.min(1, (now - started) / 600);
+        const eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = `${Math.round(target * eased)}${suffix}`;
+        if (p < 1) requestAnimationFrame(step);
+        else el.textContent = raw;
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  // 页面内容入场编排：顶层区块错峰升起 + 统计数字滚动。
+  function enterMain() {
+    if (!mainEl) return;
+    [...mainEl.children].forEach((el, i) => {
+      el.classList.remove('rise-in');
+      if (reducedMotion()) return;
+      el.style.setProperty('--stagger', `${Math.min(i, 10) * 55}ms`);
+      void el.offsetWidth;
+      el.classList.add('rise-in');
+    });
+    animateCounters();
+  }
+
+  // 换内容：旧内容快速淡出 → 替换 → 新内容入场编排。
+  async function swapMain(html, title) {
+    if (!mainEl) return;
+    if (title && document.title !== title) document.title = title;
+    if (reducedMotion()) {
+      mainEl.innerHTML = html;
+      return;
+    }
+    mainEl.classList.add('is-leaving');
+    await wait(110);
+    mainEl.innerHTML = html;
+    mainEl.classList.remove('is-leaving');
+    enterMain();
+  }
+
+  function setActiveNav(pathname) {
+    document.querySelectorAll('.nav__item').forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      const active =
+        href === '/admin'
+          ? pathname === '/admin' || pathname === '/admin/'
+          : pathname.startsWith(href);
+      a.classList.toggle('nav__item--active', active);
+    });
+  }
+
+  // 从地址栏取当前路由（先过白名单再交给 navigate）。
+  function currentRel() {
+    const rel = location.pathname + location.search;
+    return isAllowedAdminRoute(rel) ? rel : null;
+  }
+
+  async function navigate(url, { push = true } = {}) {
+    const target = new URL(String(url), location.origin);
+    const rel = target.pathname + target.search;
+    // 白名单校验（独立早退）：路由形状不符直接整页跳转交回浏览器。
+    if (!isAllowedAdminRoute(rel)) {
+      location.href = target.href;
+      return;
+    }
+    // 仅同源 http(s) 且不含凭据的地址才走无刷新导航。
+    if (target.origin !== location.origin) {
+      location.href = target.href;
+      return;
+    }
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      location.href = target.href;
+      return;
+    }
+    if (target.username || target.password) {
+      location.href = target.href;
+      return;
+    }
+    if (!mainEl) {
+      location.href = target.href;
+      return;
+    }
+    const seq = ++navSeq;
+    navCtrl?.abort();
+    navCtrl = new AbortController();
+    progressStart();
+    try {
+      const res = await loadAdminPage(rel, navCtrl.signal);
+      if (!res) {
+        location.href = target.href;
+        return;
+      }
+      if (seq !== navSeq) return; // 已被更新的导航取代
+      if (res.status === 401) {
+        location.href = '/admin/login';
+        return;
+      }
+      if (!res.ok) throw new Error(`页面加载失败（${res.status}）`);
+      const html = await res.text();
+      if (seq !== navSeq) return;
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const newMain = doc.querySelector('.main');
+      if (!newMain) {
+        // 结构异常（如登录页/错误页）退回整页加载，保证不卡在坏状态。
+        location.href = target.href;
+        return;
+      }
+      // 提取新页面的启动数据（boot / csrf，服务器输出为纯 JSON），供 initPage 用。
+      const bootMatch = html.match(/window\.__BOOT__\s*=\s*(\{[\s\S]*\})\s*;?\s*<\/script>/);
+      if (bootMatch) {
+        try {
+          window.__BOOT__ = JSON.parse(bootMatch[1]);
+        } catch {
+          /* boot 解析失败保留旧值 */
+        }
+      }
+      await swapMain(newMain.innerHTML, doc.title);
+      if (push) history.pushState({}, '', target.pathname + target.search);
+      setActiveNav(target.pathname);
+      window.scrollTo({ top: 0 });
+      initPage();
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        toast(err?.message || '页面加载失败，请重试', true);
+      }
+    } finally {
+      if (seq === navSeq) progressDone();
+    }
+  }
+
+  // 操作成功后的「刷新」：只重新拉取当前页内容。
+  const refreshPage = () => {
+    const rel = currentRel();
+    if (rel) navigate(rel, { push: false });
+    else location.reload();
+  };
+
+  // 内链点击拦截：仅同源 /admin 路径走无刷新导航，修饰键/新标签保持原生行为。
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href^="/admin"]');
+    if (!a || e.defaultPrevented || e.button !== 0) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (a.target === '_blank' || a.hasAttribute('download')) return;
+    const url = new URL(a.getAttribute('href'), location.origin);
+    const rel = url.pathname + url.search;
+    if (!isAllowedAdminRoute(rel)) return; // 不拦截，交回浏览器
+    if (url.origin !== location.origin) return;
+    e.preventDefault();
+    navigate(rel);
+  });
+
+  window.addEventListener('popstate', () => {
+    const rel = currentRel();
+    if (rel) navigate(rel, { push: false });
+  });
+
+  // 首次进入也走同样的入场编排。
+  enterMain();
+  initPage();
 })();

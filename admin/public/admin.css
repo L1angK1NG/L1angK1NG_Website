@@ -2,16 +2,10 @@
    src/styles/global.css），让后台看起来属于同一产品。
    亮色与暗色主题跟随操作系统偏好。 */
 
-/* 全站字体：霞鹜文楷等宽（与前台一致）。字体文件在博客 public/fonts/ 下，
-   本地后台服务与线上 nginx 的静态根都能按 /fonts/ 路径提供；
-   字体未就绪（或文件缺失）时回退到系统字体。 */
-@font-face {
-  font-family: 'LXGW WenKai Mono';
-  src: url('/fonts/LXGWWenKaiMono-Medium.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
+/* 全站字体：霞鹜文楷等宽（与前台一致）。子集化 woff2 分片的 @font-face
+   声明与前台共用同一份（/admin-assets/fonts.css，源文件 src/styles/fonts.css），
+   按 unicode-range 分片按需加载；字体未就绪时回退到系统字体。 */
+@import url('/admin-assets/fonts.css');
 
 :root {
   --bg: #f8f7f4;
@@ -349,4 +343,258 @@ img { max-width: 100%; }
   @media (prefers-reduced-motion: no-preference) {
     .main { animation: adminRouteIn 130ms cubic-bezier(0.22, 1, 0.36, 1) both; }
   }
+}
+
+/* ================= 动效系统 =================
+   无刷新导航 + 展示动画：页面切换由 admin.js 换内容并触发入场编排，
+   这里提供全部关键帧与微交互。所有动效在 prefers-reduced-motion 下自动降级。 */
+
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes slide-up-in {
+  from { opacity: 0; transform: translate(-50%, 18px) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes slide-up-out {
+  from { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  to { opacity: 0; transform: translate(-50%, 10px) scale(0.97); }
+}
+
+@keyframes nav-progress-run {
+  0% { left: -32%; }
+  100% { left: 102%; }
+}
+
+@keyframes bar-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes img-in {
+  from { opacity: 0; transform: scale(1.03); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* —— 页面切换编排（JS 在内容替换前后加/去类） —— */
+.main.is-leaving > * {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.11s ease, transform 0.11s ease;
+}
+
+.main > .rise-in {
+  animation: rise-in 0.5s var(--ease-out) var(--stagger, 0ms) both;
+}
+
+.pop-in {
+  animation: pop-in 0.34s var(--ease-spring) both;
+}
+
+/* —— 顶部导航进度条 —— */
+.nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 300;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.nav-progress.is-active { opacity: 1; }
+
+.nav-progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 32%;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  border-radius: 3px;
+  animation: nav-progress-run 0.9s ease-in-out infinite;
+}
+
+/* —— 侧栏微交互 —— */
+.nav__item {
+  position: relative;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s var(--ease-out);
+}
+
+.nav__item:hover { transform: translateX(3px); }
+
+.nav__item:active { transform: translateX(3px) scale(0.98); }
+
+.nav__item--active {
+  animation: pop-in 0.28s var(--ease-spring) both;
+}
+
+.nav__item--active .nav__icon { animation: float-soft 3.2s ease-in-out infinite; }
+
+/* —— 按钮微交互 —— */
+.btn {
+  transition: background 0.15s, border-color 0.15s, transform 0.13s var(--ease-out), box-shadow 0.2s ease;
+}
+
+.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(27, 28, 30, 0.1); }
+
+.btn:active { transform: translateY(0) scale(0.96); transition-duration: 0.06s; }
+
+.btn--primary {
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+.btn--primary:hover {
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 34%, transparent);
+}
+
+/* —— 卡片 / 统计 —— */
+.card {
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+
+.stat {
+  transition: border-color 0.25s ease, transform 0.25s var(--ease-out), box-shadow 0.25s ease;
+}
+
+.stat:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: var(--border-strong);
+}
+
+.stat__value { transition: color 0.25s ease; }
+.stat:hover .stat__value { color: var(--primary); }
+
+/* —— 表格行 —— */
+.table tbody tr {
+  transition: background 0.18s ease, transform 0.18s var(--ease-out);
+}
+
+.table tbody tr:hover {
+  background: var(--bg-tint);
+  transform: translateX(2px);
+}
+
+.table tbody tr:active { transform: translateX(2px) scale(0.995); }
+
+/* —— 表单控件 —— */
+.input {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.input:hover { border-color: color-mix(in srgb, var(--primary) 40%, var(--border-strong)); }
+
+/* —— 徽标 / 提示条 —— */
+.badge { transition: transform 0.16s var(--ease-out); }
+.badge:hover { transform: scale(1.08); }
+
+.toast {
+  opacity: 0;
+  transform: translate(-50%, 18px) scale(0.96);
+  transition: opacity 0.22s ease, transform 0.22s var(--ease-spring);
+}
+
+.toast.is-in {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.toast.is-out {
+  opacity: 0;
+  transform: translate(-50%, 10px) scale(0.97);
+}
+
+.alert { animation: pop-in 0.3s var(--ease-spring) both; }
+
+/* —— 媒体卡片与图片 —— */
+.media-item {
+  transition: transform 0.25s var(--ease-out), box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.media-item:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow);
+  border-color: var(--border-strong);
+}
+
+.media-item img { animation: img-in 0.4s ease both; }
+
+/* —— 上传区 —— */
+.upload-zone {
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s var(--ease-out), color 0.2s ease;
+}
+
+.upload-zone:hover { border-color: var(--primary); color: var(--text); }
+
+.upload-zone--over {
+  transform: scale(1.012);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+/* —— 统计条形图 —— */
+.bar-row__fill {
+  transform-origin: left;
+  animation: bar-fill 0.7s var(--ease-out) both;
+}
+
+/* —— 发布列表 / 键值行 —— */
+.release {
+  transition: background 0.18s ease, padding-left 0.18s var(--ease-out);
+}
+
+.release:hover { background: var(--bg-tint); padding-left: 6px; }
+
+.kv-row { transition: transform 0.18s var(--ease-out); }
+.kv-row:hover { transform: translateX(2px); }
+
+/* —— 登录卡片 —— */
+.login-card { animation: rise-in 0.5s var(--ease-out) both; }
+
+/* —— 减少动效偏好：全部降级 —— */
+@media (prefers-reduced-motion: reduce) {
+  .main.is-leaving > *,
+  .main > .rise-in,
+  .pop-in,
+  .alert,
+  .login-card,
+  .media-item img,
+  .bar-row__fill,
+  .nav__item--active,
+  .nav__item--active .nav__icon {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .btn:hover, .stat:hover, .media-item:hover, .table tbody tr:hover,
+  .nav__item:hover, .upload-zone--over, .release:hover, .kv-row:hover {
+    transform: none !important;
+  }
+
+  .toast { transition: opacity 0.15s ease; transform: translate(-50%, 0); }
+
+  .nav-progress::after { animation-duration: 2s; }
 }

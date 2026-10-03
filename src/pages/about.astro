@@ -28,6 +28,8 @@ interface GhRepo {
 import cachedRepos from '../data/github-projects.json';
 import siteConfig from '../data/site.config.json';
 import starFillIcon from '@phosphor-icons/core/assets/fill/star-fill.svg?raw';
+import fs from 'node:fs';
+import path from 'node:path';
 import { getAbout } from '../lib/site-content';
 
 const about = getAbout();
@@ -68,6 +70,18 @@ const fetchGithubRepos = async (): Promise<GhRepo[]> => {
     clearTimeout(timer);
     if (!res.ok) return cachedRepos as GhRepo[];
     const repos = (await res.json()) as GhRepo[];
+    if (repos.length) {
+      // 拉取成功后回写缓存：下次 API 不可达时回退到真实数据而非空壳。
+      try {
+        fs.writeFileSync(
+          path.join(process.cwd(), 'src', 'data', 'github-projects.json'),
+          `${JSON.stringify(repos, null, 2)}\n`,
+          'utf8',
+        );
+      } catch {
+        /* 缓存回写失败不影响构建 */
+      }
+    }
     return repos.length ? repos : (cachedRepos as GhRepo[]);
   } catch {
     return cachedRepos as GhRepo[];

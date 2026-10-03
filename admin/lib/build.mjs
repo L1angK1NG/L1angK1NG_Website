@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { ROOT } from './env.mjs';
+import { logWarn } from './log.mjs';
 
 const RELEASES_DIR = path.join(ROOT, 'releases');
 const CURRENT = path.join(ROOT, 'current');
@@ -81,8 +82,8 @@ function writeContentManifest() {
     const tmp = CONTENT_MANIFEST + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(listContentFiles(), null, 2), 'utf8');
     fs.renameSync(tmp, CONTENT_MANIFEST);
-  } catch {
-    /* 忽略 */
+  } catch (err) {
+    logWarn('内容构建清单写入失败', err);
   }
 }
 
@@ -120,8 +121,9 @@ function releaseLock() {
 
 // 剥离 ANSI 转义序列（颜色 / 光标 / 窗口标题等控制符）：astro、npm 往管道输出
 // 时会带上这些序列，原样存进日志后在后台 <pre> 里就显示成乱码。覆盖 CSI、
-// OSC 与单字符转义三种形式。
-const ANSI_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g;
+// OSC、字符集指定（如 ESC ( B）与单字符转义几种形式。
+// eslint-disable-next-line no-control-regex -- 剥离 ANSI 控制序列必然匹配控制字符
+const ANSI_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][0-9A-Za-z@-~]|[@-Z\\-_])/g;
 
 export function stripAnsi(text) {
   return String(text ?? '').replace(ANSI_RE, '');
@@ -174,8 +176,31 @@ function publish(releaseDir) {
   rmrf(tmpLink);
   fs.symlinkSync(target, tmpLink, type);
   if (process.platform === 'win32') {
-    // Windows 的 rename 无法替换已存在的目录链接；需先删除（仅开发环境）。
-    rmrf(CURRENT);
+    // Windows 的 rename 无法替换已存在的目录链接：把旧链接先改名挪开
+    // （而非删除），再把新链接改名到位——两次 rename 之间的窗口只有
+    // 「链接缺失」而不是「已删除且未就位」，且旧链接改名失败可立即恢复。
+    const backupLink = path.join(ROOT, '.current-old');
+    rmrf(backupLink);
+    let moved = false;
+    try {
+      if (fs.existsSync(CURRENT)) {
+        fs.renameSync(CURRENT, backupLink);
+        moved = true;
+      }
+      fs.renameSync(tmpLink, CURRENT);
+      rmrf(backupLink);
+    } catch (err) {
+      // 切换失败时把旧链接挪回来，保证线上目录始终存在。
+      if (moved) {
+        try {
+          fs.renameSync(backupLink, CURRENT);
+        } catch {
+          /* 恢复也失败时只能报错，交由运维处理 */
+        }
+      }
+      throw err;
+    }
+    return;
   }
   fs.renameSync(tmpLink, CURRENT);
 }
@@ -210,9 +235,12 @@ export function currentRelease() {
 function writeStatus(status) {
   try {
     fs.mkdirSync(RELEASES_DIR, { recursive: true });
-    fs.writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2), 'utf8');
-  } catch {
-    /* 忽略 */
+    // 与 store.mjs 一致走临时文件 + 原子重命名，避免崩溃时留下半截 JSON。
+    const tmp = `${STATUS_FILE}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(status, null, 2), 'utf8');
+    fs.renameSync(tmp, STATUS_FILE);
+  } catch (err) {
+    logWarn('构建状态写入失败', err);
   }
 }
 

@@ -1,7 +1,7 @@
 // 站点展示类数据的存取：页面内容（主页 hero + 关于页）、网址导航、
 // 友链（含访客申请与审核）、公告栏。数据落在 data/ 下的 JSON 文件，
 // 与前台构建共用同一份数据源（前台构建时通过 src/lib/site-data.ts 读取）。
-import { readJSON, writeJSON, newId } from './store.mjs';
+import { readJSON, writeJSONAsync, withFileLock, newId } from './store.mjs';
 
 // —— 页面内容（主页 hero + 关于页，统一编辑） ——
 const PROFILE_FILE = 'profile.json';
@@ -123,6 +123,7 @@ export function getProfile() {
 }
 
 export function saveProfile(input) {
+  return withFileLock(PROFILE_FILE, async () => {
   const current = getProfile();
   const out = {
     hero: {
@@ -146,8 +147,9 @@ export function saveProfile(input) {
       attribution: sanitizeAttribution(String(input?.footer?.attribution ?? current.footer.attribution).trim().slice(0, 400)),
     },
   };
-  writeJSON(PROFILE_FILE, out);
+  await writeJSONAsync(PROFILE_FILE, out);
   return out;
+  });
 }
 
 // —— 网址导航 ——
@@ -173,6 +175,7 @@ export function getNavLinks() {
 }
 
 export function saveNavLinks(input) {
+  return withFileLock(NAV_FILE, async () => {
   const categories = (Array.isArray(input?.categories) ? input.categories : [])
     .map((cat, ci) => ({
       id: String(cat?.id || '').trim().slice(0, 40) || `cat-${ci + 1}`,
@@ -187,8 +190,9 @@ export function saveNavLinks(input) {
         .filter((l) => l.name && l.url),
     }))
     .filter((cat) => cat.name && cat.links.length > 0);
-  writeJSON(NAV_FILE, { categories });
+  await writeJSONAsync(NAV_FILE, { categories });
   return { categories };
+  });
 }
 
 // —— 友链（展示 + 访客申请 + 后台审核） ——
@@ -219,14 +223,17 @@ export function getFriends() {
 }
 
 export function saveFriendsNotice(notice) {
-  const data = getFriends();
-  data.notice = String(notice ?? '').trim().slice(0, 1000);
-  writeJSON(FRIENDS_FILE, data);
-  return data;
+  return withFileLock(FRIENDS_FILE, async () => {
+    const data = getFriends();
+    data.notice = String(notice ?? '').trim().slice(0, 1000);
+    await writeJSONAsync(FRIENDS_FILE, data);
+    return data;
+  });
 }
 
 // 访客提交友链申请：一律先进 pending 队列，等待后台审核。
 export function applyFriend({ name, url, avatar, desc, email }) {
+  return withFileLock(FRIENDS_FILE, async () => {
   const data = getFriends();
   const item = {
     id: newId(),
@@ -249,11 +256,13 @@ export function applyFriend({ name, url, avatar, desc, email }) {
   } else {
     data.items.push(item);
   }
-  writeJSON(FRIENDS_FILE, data);
+  await writeJSONAsync(FRIENDS_FILE, data);
   return dup || item;
+  });
 }
 
 export function saveFriend(input) {
+  return withFileLock(FRIENDS_FILE, async () => {
   const data = getFriends();
   const id = String(input?.id || '');
   const item = data.items.find((f) => f.id === id);
@@ -264,29 +273,34 @@ export function saveFriend(input) {
   item.avatar = String(input?.avatar ?? item.avatar).trim().slice(0, 300);
   item.desc = String(input?.desc ?? item.desc).trim().slice(0, 120);
   item.email = String(input?.email ?? item.email).trim().slice(0, 100);
-  writeJSON(FRIENDS_FILE, data);
+  await writeJSONAsync(FRIENDS_FILE, data);
   return item;
+  });
 }
 
 // 审核：approved 即刻出现在前台友链页，rejected 仅后台可见。
 export function reviewFriend(id, status) {
-  if (!['approved', 'pending', 'rejected'].includes(status)) throw new Error('审核状态无效');
-  const data = getFriends();
-  const item = data.items.find((f) => f.id === String(id));
-  if (!item) throw new Error('友链不存在');
-  item.status = status;
-  item.reviewedAt = Date.now();
-  writeJSON(FRIENDS_FILE, data);
-  return item;
+  return withFileLock(FRIENDS_FILE, async () => {
+    if (!['approved', 'pending', 'rejected'].includes(status)) throw new Error('审核状态无效');
+    const data = getFriends();
+    const item = data.items.find((f) => f.id === String(id));
+    if (!item) throw new Error('友链不存在');
+    item.status = status;
+    item.reviewedAt = Date.now();
+    await writeJSONAsync(FRIENDS_FILE, data);
+    return item;
+  });
 }
 
 export function deleteFriend(id) {
-  const data = getFriends();
-  const next = data.items.filter((f) => f.id !== String(id));
-  if (next.length === data.items.length) throw new Error('友链不存在');
-  data.items = next;
-  writeJSON(FRIENDS_FILE, data);
-  return { ok: true };
+  return withFileLock(FRIENDS_FILE, async () => {
+    const data = getFriends();
+    const next = data.items.filter((f) => f.id !== String(id));
+    if (next.length === data.items.length) throw new Error('友链不存在');
+    data.items = next;
+    await writeJSONAsync(FRIENDS_FILE, data);
+    return { ok: true };
+  });
 }
 
 // —— 公告栏 ——
@@ -307,6 +321,7 @@ export function getAnnouncements() {
 }
 
 export function saveAnnouncement(input) {
+  return withFileLock(ANNOUNCE_FILE, async () => {
   const list = getAnnouncements();
   const id = String(input?.id || '');
   const entry = {
@@ -323,16 +338,19 @@ export function saveAnnouncement(input) {
   const idx = list.findIndex((a) => a.id === entry.id);
   if (idx >= 0) list[idx] = entry;
   else list.push(entry);
-  writeJSON(ANNOUNCE_FILE, list);
+  await writeJSONAsync(ANNOUNCE_FILE, list);
   return entry;
+  });
 }
 
 export function deleteAnnouncement(id) {
-  const list = getAnnouncements();
-  const next = list.filter((a) => a.id !== String(id));
-  if (next.length === list.length) throw new Error('公告不存在');
-  writeJSON(ANNOUNCE_FILE, next);
-  return { ok: true };
+  return withFileLock(ANNOUNCE_FILE, async () => {
+    const list = getAnnouncements();
+    const next = list.filter((a) => a.id !== String(id));
+    if (next.length === list.length) throw new Error('公告不存在');
+    await writeJSONAsync(ANNOUNCE_FILE, next);
+    return { ok: true };
+  });
 }
 
 // 前台可见的公告：已启用且在有效期内。

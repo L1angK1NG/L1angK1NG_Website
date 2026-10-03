@@ -92,20 +92,28 @@ interface ProfileFile {
   footer?: Partial<FooterContent>;
 }
 
-let cached: { hero: HeroContent; about: AboutContent; footer: FooterContent } | null = null;
+let cached: { mtimeMs: number; data: { hero: HeroContent; about: AboutContent; footer: FooterContent } } | null = null;
 
 function readProfile(): { hero: HeroContent; about: AboutContent; footer: FooterContent } {
-  if (cached) return cached;
+  // 按文件 mtime 缓存：dev 下后台改了 data/profile.json 无需重启 dev server，
+  // 下一次读取即生效；构建期多次读取仍走缓存。
+  const file = path.join(process.cwd(), 'data', 'profile.json');
+  let mtimeMs = 0;
+  try {
+    mtimeMs = fs.statSync(file).mtimeMs;
+  } catch {
+    // 文件不存在时 mtime 记 0，缓存键稳定。
+  }
+  if (cached && cached.mtimeMs === mtimeMs) return cached.data;
   let saved: ProfileFile = {};
   try {
-    const file = path.join(process.cwd(), 'data', 'profile.json');
     if (fs.existsSync(file)) {
       saved = JSON.parse(fs.readFileSync(file, 'utf8')) as ProfileFile;
     }
   } catch {
     // 数据损坏时用默认文案，构建不中断。
   }
-  cached = {
+  const data = {
     hero: { ...DEFAULT_HERO, ...saved.hero, socials: saved.hero?.socials?.length ? saved.hero.socials : DEFAULT_HERO.socials },
     about: { ...DEFAULT_ABOUT, ...saved.about, subs: saved.about?.subs?.length ? saved.about.subs : DEFAULT_ABOUT.subs, facts: saved.about?.facts?.length ? saved.about.facts : DEFAULT_ABOUT.facts, socials: saved.about?.socials?.length ? saved.about.socials : DEFAULT_ABOUT.socials },
     footer: {
@@ -117,7 +125,8 @@ function readProfile(): { hero: HeroContent; about: AboutContent; footer: Footer
         .filter((l) => l.label),
     },
   };
-  return cached;
+  cached = { mtimeMs, data };
+  return data;
 }
 
 export const getHero = (): HeroContent => readProfile().hero;

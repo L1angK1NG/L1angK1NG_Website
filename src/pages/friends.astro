@@ -64,10 +64,8 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
 <script>
   // 友链列表与申请走运行时 API：审核通过即刻展示，无需重新构建。
-  const esc = (s: unknown) =>
-    String(s ?? '').replace(/[&<>"']/g, (m) =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]!,
-    );
+  // HTML 转义统一走共享的 sanitize 模块。
+  import { esc } from '../lib/sanitize.js';
 
   const initFriends = () => {
     const grid = document.getElementById('friend-grid');
@@ -97,8 +95,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         .join('');
     };
 
-    fetch('/api/public/friends')
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load fail'))))
+    // 走 API 哨兵门控：无后端时跳过请求，直接显示失败提示（不产生控制台报错）。
+    const api = window.__blogApi;
+    const request = api?.gateFetch ? api.gateFetch('/api/public/friends') : fetch('/api/public/friends');
+    Promise.resolve(request)
+      .then((r) => (r && r.ok ? r.json() : Promise.reject(new Error('load fail'))))
       .then((data: { notice?: string; items?: Array<Record<string, string>> }) => {
         if (data.notice && noticeBox && noticeText) {
           noticeText.textContent = data.notice;
@@ -106,7 +107,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         }
         render(data.items ?? []);
       })
-      .catch(() => render([]));
+      .catch(() => {
+        // 与「暂无友链」区分：接口不可达时如实告知，而不是误导访客以为没有友链。
+        grid.innerHTML = '<p class="empty-hint">友链暂时加载失败，请稍后刷新重试。</p>';
+      });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -116,13 +120,29 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       if (btn) btn.disabled = true;
       if (status) status.textContent = '提交中…';
       try {
-        const res = await fetch('/api/public/friends/apply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || '提交失败');
+        const gate = window.__blogApi?.gateFetch;
+        const res = gate
+          ? await gate('/api/public/friends/apply', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            })
+          : await fetch('/api/public/friends/apply', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            });
+        if (!res) throw new Error('服务暂不可用，请稍后再试');
+        // 严格校验：网络层（res.ok）与业务层（data.ok）都成功才算提交成功；
+        // 响应不是 JSON（如静态托管回退到 HTML）时同样按失败处理，绝不假成功。
+        let data: { ok?: boolean; error?: string; message?: string } | null = null;
+        try {
+          data = await res.json();
+        } catch {
+          data = null;
+        }
+        if (!res.ok) throw new Error(data?.error || `提交失败（服务返回 ${res.status}）`);
+        if (!data || data.ok !== true) throw new Error(data?.error || '提交失败，服务未确认收到申请');
         if (status) {
           status.textContent = data.message || '申请已提交，等待审核。';
           status.classList.remove('is-error');
@@ -130,6 +150,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         form.reset();
       } catch (err) {
         if (status) {
+          // 失败时保留已填内容（不 reset），提示明确原因。
           status.textContent = (err as Error).message || '提交失败，请稍后再试。';
           status.classList.add('is-error');
         }

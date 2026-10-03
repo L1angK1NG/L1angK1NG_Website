@@ -108,8 +108,8 @@ export function layout({ title, active, user, boot, content }) {
     </main>
   </div>
   <div class="toast" id="toast" hidden></div>
-  <script>window.__BOOT__ = ${JSON.stringify(boot || {})}</script>
-  <script src="/admin-assets/admin.js"></script>
+  <script>window.__BOOT__ = ${JSON.stringify(boot || {}).replace(/</g, '\\u003c')}</script>
+  <script type="module" src="/admin-assets/admin.js"></script>
 </body>
 </html>`;
 }
@@ -138,8 +138,8 @@ export function loginPage({ csrfToken, error }) {
       <button class="btn btn--primary btn--block" type="submit">登录</button>
     </form>
   </div>
-  <script>window.__BOOT__ = { csrfToken: ${JSON.stringify(csrfToken)} };</script>
-  <script src="/admin-assets/admin.js"></script>
+  <script>window.__BOOT__ = { "csrfToken": ${JSON.stringify(csrfToken).replace(/</g, '\\u003c')} };</script>
+  <script type="module" src="/admin-assets/admin.js"></script>
 </body>
 </html>`;
 }
@@ -625,10 +625,10 @@ export function musicPage({ user, boot, tracks }) {
     </section>
 
     <div class="card">
-      <h2 class="card__title">歌单（拖动排序可保存顺序）</h2>
+      <h2 class="card__title">管理歌单（拖动排序可保存顺序）</h2>
       <table class="table" id="music-table">
         <thead><tr><th>曲目</th><th>歌手</th><th>来源</th><th>状态</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="5" class="empty">歌单为空，上传本地音乐或导入网易云歌曲。</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="5" class="empty">管理歌单为空。上传本地音乐，或在上方「导入网易云」粘贴歌曲 / 歌单链接。</td></tr>'}</tbody>
       </table>
       <div class="actions">
         <button type="button" class="btn" id="music-reorder-up">上移所选</button>

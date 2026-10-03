@@ -10,14 +10,7 @@ import {
 } from '../lib/posts';
 import { getPublishedPosts } from '../lib/posts';
 import { getProjects } from '../lib/site-content';
-
-const escapeXml = (value: string) =>
-  value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
+import { escapeXml } from '../lib/escape';
 
 const urlEntry = (path: string, lastmod?: Date) => `
   <url>
@@ -25,12 +18,21 @@ const urlEntry = (path: string, lastmod?: Date) => `
     ${lastmod ? `<lastmod>${lastmod.toISOString()}</lastmod>` : ''}
   </url>`;
 
+// 静态页面路由自动发现：从 src/pages 的 .astro 页面推导，新增页面无需再手动
+// 同步清单。动态 [param] 路由（文章/项目/分类/标签）由下面各自的循环覆盖；
+// 404 页不进 sitemap。
+const pageModules = import.meta.glob('../pages/**/*.astro');
+const staticPaths = Object.keys(pageModules)
+  .map((file) => file.replace(/^(\.\.\/)+pages\//, '/').replace(/\.astro$/, ''))
+  .filter((route) => !route.includes('[') && !route.endsWith('/404'))
+  .map((route) => (route.endsWith('/index') ? `${route.slice(0, -'index'.length)}` || '/' : `${route}/`))
+  .sort();
+
 export async function GET() {
   const posts = sortPosts(await getPublishedPosts());
   const categories = getCategories(posts);
   const tags = getTags(posts);
 
-  const staticPaths = ['/', '/search/', '/archive/', '/notes/', '/projects/', '/nav/', '/friends/', '/about/'];
   const paths = [
     ...staticPaths.map((path) => urlEntry(path)),
     ...posts.map((post) => urlEntry(getPostPath(post), getPostUpdatedDate(post))),

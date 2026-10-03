@@ -1,0 +1,31 @@
+# 最小 CI：安装 → 代码规范 → 构建 → 产物体检。
+# 与本地 npm run lint / npm run build / npm run check:dist 完全一致。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 代码规范
+        run: npm run lint
+
+      - name: 构建
+        run: npm run build
+
+      - name: 构建产物体检
+        run: npm run check:dist

@@ -1,92 +1,9 @@
 // 共享的评论 UI + Twikoo 后端客户端（不引入 Twikoo 前端 bundle）。
 // 供底部评论框和划词引用流程使用。
-
-const esc = (s) =>
-  String(s == null ? '' : s).replace(/[&<>"']/g, (m) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]),
-  );
+// HTML 转义与白名单净化统一走 ./sanitize.js（与后台预览共用一套逻辑）。
+import { esc, sanitizeHtml } from './sanitize.js';
 
 const avatar = (md5) => `https://cravatar.cn/avatar/${encodeURIComponent(md5 || '')}?d=mp&s=80`;
-
-const allowedTags = new Set([
-  'A',
-  'B',
-  'BLOCKQUOTE',
-  'BR',
-  'CODE',
-  'DEL',
-  'EM',
-  'I',
-  'IMG',
-  'LI',
-  'OL',
-  'P',
-  'PRE',
-  'S',
-  'SPAN',
-  'STRONG',
-  'UL',
-]);
-
-const safeUrl = (value, protocols = ['http:', 'https:']) => {
-  try {
-    const url = new URL(value, location.origin);
-    return protocols.includes(url.protocol);
-  } catch {
-    return false;
-  }
-};
-
-const sanitizeComment = (html) => {
-  const template = document.createElement('template');
-  template.innerHTML = String(html || '');
-
-  const walk = (node) => {
-    for (const child of [...node.childNodes]) {
-      if (child.nodeType === Node.COMMENT_NODE) {
-        child.remove();
-        continue;
-      }
-      if (child.nodeType !== Node.ELEMENT_NODE) continue;
-
-      if (!allowedTags.has(child.tagName)) {
-        child.replaceWith(document.createTextNode(child.textContent || ''));
-        continue;
-      }
-
-      for (const attr of [...child.attributes]) {
-        const name = attr.name.toLowerCase();
-        const value = attr.value;
-        const isLink = child.tagName === 'A' && ['href', 'title'].includes(name);
-        const isImage = child.tagName === 'IMG' && ['src', 'alt', 'title'].includes(name);
-        const isCode = ['CODE', 'PRE', 'SPAN'].includes(child.tagName) && name === 'class';
-
-        if (
-          name.startsWith('on') ||
-          (!isLink && !isImage && !isCode) ||
-          (name === 'href' && !safeUrl(value, ['http:', 'https:', 'mailto:'])) ||
-          (name === 'src' && !safeUrl(value))
-        ) {
-          child.removeAttribute(attr.name);
-        }
-      }
-
-      if (child.tagName === 'A' && child.getAttribute('href')) {
-        child.setAttribute('target', '_blank');
-        child.setAttribute('rel', 'noopener noreferrer');
-      }
-      if (child.tagName === 'IMG' && child.getAttribute('src')) {
-        child.setAttribute('loading', 'lazy');
-        child.setAttribute('referrerpolicy', 'no-referrer');
-      }
-
-      walk(child);
-    }
-  };
-
-  walk(template.content);
-  return template.innerHTML;
-};
 
 const rel = (ts) => {
   const d = (Date.now() - ts) / 1000;
@@ -98,11 +15,32 @@ const rel = (ts) => {
 };
 
 export function callTwikoo(envId, event, params = {}) {
-  return fetch(envId, {
+  // 本地内置评论 API 走哨兵门控：无后端时跳过请求（不产生控制台报错）；
+  // 外部 Twikoo 服务（envId 为 URL）不受本地 API 状态影响。
+  const local = String(envId || '').startsWith('/');
+  const opts = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ event, ...params }),
-  }).then((r) => r.json());
+  };
+  const request = local && window.__blogApi?.gateFetch
+    ? window.__blogApi.gateFetch(envId, opts)
+    : fetch(envId, opts);
+  return Promise.resolve(request).then(async (r) => {
+    // 无响应（门控跳过 / 网络失败）与业务失败统一抛错，调用方给出失败提示。
+    if (!r) throw new Error('评论服务暂不可用');
+    if (!r.ok) {
+      // 优先展示服务端原因（如限流的「操作过于频繁，请 N 秒后再试」）。
+      let msg = `服务返回 ${r.status}`;
+      try {
+        msg = (await r.json())?.error || msg;
+      } catch {
+        /* 非 JSON 响应保留状态码提示 */
+      }
+      throw new Error(msg);
+    }
+    return r.json();
+  });
 }
 
 export const itemHTML = (c, { reply = false, actions = true } = {}) => {
@@ -117,7 +55,7 @@ export const itemHTML = (c, { reply = false, actions = true } = {}) => {
         ${c.ruser ? `<span class="citem__re">回复 ${esc(c.ruser)}</span>` : ''}
         <time class="citem__time">${rel(c.created)}</time>
       </div>
-      <div class="citem__content">${sanitizeComment(c.comment)}</div>
+      <div class="citem__content">${sanitizeHtml(c.comment)}</div>
       ${
         actions
           ? `<div class="citem__actions">
@@ -212,10 +150,14 @@ export function mountComments(root, { envId, url, onCount } = {}) {
       emptyEl.hidden = total > 0;
       const shown = listEl.querySelectorAll(':scope > .citem').length;
       moreEl.hidden = total === 0 || shown >= total;
+      moreEl.textContent = '加载更多';
       page += 1;
       if (onCount) onCount(total);
-    } catch {
-      moreEl.hidden = true;
+    } catch (err) {
+      // 加载失败不再静默隐藏：给出原因提示，并把「加载更多」变成重试入口。
+      moreEl.hidden = false;
+      moreEl.textContent = '加载失败，点击重试';
+      setStatus(`评论加载失败：${err?.message || '请稍后重试'}`, false);
     }
     loading = false;
   };
@@ -283,7 +225,8 @@ export function mountComments(root, { envId, url, onCount } = {}) {
         span.textContent = (Number(span.textContent) || 0) + 1;
         likeBtn.classList.add('is-liked');
       } catch {
-        /* 忽略 */
+        // 点赞失败给出提示，不再静默吞掉。
+        setStatus('点赞失败，请稍后再试。', false);
       }
     }
     if (replyBtn) {

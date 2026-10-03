@@ -18,8 +18,17 @@ export function publicRouter() {
   const router = express.Router();
 
   // —— 评论（Twikoo 协议：事件 POST /api/public/twikoo） ——
-  router.post('/twikoo', (req, res) => {
-    const limit = rateLimit(req, { key: 'comment', max: 10, windowMs: 5 * 60 * 1000 });
+  router.post('/twikoo', async (req, res) => {
+    // 按事件分桶限流：浏览（GET）宽松——每次打开文章/随笔页都算一次读，
+    // 若与发送共用一个桶，刷新十来次后连看都看不了；发送与点赞各自限额防刷。
+    const event = String(req.body?.event || '');
+    const limitFor =
+      event === 'COMMENT_GET'
+        ? { key: 'comment-read', max: 60, windowMs: 5 * 60 * 1000 }
+        : event === 'COMMENT_LIKE'
+          ? { key: 'comment-like', max: 30, windowMs: 5 * 60 * 1000 }
+          : { key: 'comment-write', max: 10, windowMs: 5 * 60 * 1000 };
+    const limit = rateLimit(req, limitFor);
     if (!limit.ok) {
       return res.status(429).json({ error: `操作过于频繁，请 ${limit.retryAfter} 秒后再试。` });
     }
@@ -31,7 +40,7 @@ export function publicRouter() {
           return res.json(comments.getComments({ url: body.url, page: body.page, pageSize: body.pageSize }));
         case 'COMMENT_SUBMIT':
           return res.json(
-            comments.submitComment({
+            await comments.submitComment({
               url: body.url,
               nick: body.nick,
               mail: body.mail,
@@ -44,7 +53,7 @@ export function publicRouter() {
             }),
           );
         case 'COMMENT_LIKE':
-          return res.json(comments.likeComment({ id: body.id, ipHash }));
+          return res.json(await comments.likeComment({ id: body.id, ipHash }));
         default:
           return res.status(400).json({ error: '未知事件' });
       }
@@ -63,13 +72,13 @@ export function publicRouter() {
     });
   });
 
-  router.post('/friends/apply', (req, res) => {
+  router.post('/friends/apply', async (req, res) => {
     const limit = rateLimit(req, { key: 'friend-apply', max: 5, windowMs: 30 * 60 * 1000 });
     if (!limit.ok) {
       return res.status(429).json({ error: `提交过于频繁，请 ${limit.retryAfter} 秒后再试。` });
     }
     try {
-      siteData.applyFriend(req.body || {});
+      await siteData.applyFriend(req.body || {});
       res.json({ ok: true, message: '申请已提交，等待站长审核。通过后将展示在友链页。' });
     } catch (err) {
       return jsonError(res, err);
@@ -116,6 +125,17 @@ export function publicRouter() {
     }
   });
 
+  // 歌词（LRC 文本）：经服务端转发获取，前端解析展示。
+  router.get('/playlist/lyric/:id', async (req, res) => {
+    const limit = rateLimit(req, { key: 'lyric', max: 60, windowMs: 60 * 1000 });
+    if (!limit.ok) return res.status(429).json({ error: '请求过于频繁' });
+    try {
+      res.json({ lyric: await music.getLyric(req.params.id) });
+    } catch (err) {
+      jsonError(res, err, '歌词获取失败');
+    }
+  });
+
   // —— 访问统计打点 ——
   router.post('/view', async (req, res) => {
     const limit = rateLimit(req, { key: 'view', max: 120, windowMs: 60 * 1000 });
@@ -148,9 +168,9 @@ export function manageRouter({ requireApiAuth, requireCsrf }) {
 
   // —— 页面内容（主页 hero + 关于页） ——
   router.get('/profile', (_req, res) => res.json({ profile: siteData.getProfile() }));
-  router.post('/profile', requireCsrf, (req, res) => {
+  router.post('/profile', requireCsrf, async (req, res) => {
     try {
-      res.json({ ok: true, profile: siteData.saveProfile(req.body?.profile || {}), message: '页面内容已保存。' });
+      res.json({ ok: true, profile: await siteData.saveProfile(req.body?.profile || {}), message: '页面内容已保存。' });
     } catch (err) {
       jsonError(res, err);
     }
@@ -158,9 +178,9 @@ export function manageRouter({ requireApiAuth, requireCsrf }) {
 
   // —— 网址导航 ——
   router.get('/nav', (_req, res) => res.json({ nav: siteData.getNavLinks() }));
-  router.post('/nav', requireCsrf, (req, res) => {
+  router.post('/nav', requireCsrf, async (req, res) => {
     try {
-      res.json({ ok: true, nav: siteData.saveNavLinks(req.body?.nav || {}), message: '导航已保存。' });
+      res.json({ ok: true, nav: await siteData.saveNavLinks(req.body?.nav || {}), message: '导航已保存。' });
     } catch (err) {
       jsonError(res, err);
     }
@@ -168,32 +188,32 @@ export function manageRouter({ requireApiAuth, requireCsrf }) {
 
   // —— 友链管理 ——
   router.get('/friends', (_req, res) => res.json(siteData.getFriends()));
-  router.post('/friends/notice', requireCsrf, (req, res) => {
+  router.post('/friends/notice', requireCsrf, async (req, res) => {
     try {
-      res.json({ ok: true, notice: siteData.saveFriendsNotice(req.body?.notice).notice, message: '申请须知已保存。' });
+      res.json({ ok: true, notice: await siteData.saveFriendsNotice(req.body?.notice).notice, message: '申请须知已保存。' });
     } catch (err) {
       jsonError(res, err);
     }
   });
-  router.post('/friends/save', requireCsrf, (req, res) => {
+  router.post('/friends/save', requireCsrf, async (req, res) => {
     try {
-      res.json({ ok: true, item: siteData.saveFriend(req.body || {}), message: '友链已保存。' });
+      res.json({ ok: true, item: await siteData.saveFriend(req.body || {}), message: '友链已保存。' });
     } catch (err) {
       jsonError(res, err);
     }
   });
-  router.post('/friends/review', requireCsrf, (req, res) => {
+  router.post('/friends/review', requireCsrf, async (req, res) => {
     try {
-      const item = siteData.reviewFriend(req.body?.id, req.body?.status);
+      const item = await siteData.reviewFriend(req.body?.id, req.body?.status);
       const label = item.status === 'approved' ? '已通过，前台即刻展示' : item.status === 'rejected' ? '已拒绝' : '已重置为待审核';
       res.json({ ok: true, item, message: label });
     } catch (err) {
       jsonError(res, err);
     }
   });
-  router.post('/friends/delete', requireCsrf, (req, res) => {
+  router.post('/friends/delete', requireCsrf, async (req, res) => {
     try {
-      res.json({ ...siteData.deleteFriend(req.body?.id), message: '友链已删除。' });
+      res.json({ ...(await siteData.deleteFriend(req.body?.id)), message: '友链已删除。' });
     } catch (err) {
       jsonError(res, err);
     }
@@ -236,11 +256,15 @@ export function manageRouter({ requireApiAuth, requireCsrf }) {
   });
   router.post('/music/import-netease', requireCsrf, async (req, res) => {
     try {
-      const result = await music.importNetease(req.body?.input || '');
+      const result = await music.importNetease(req.body?.input || '', {
+        type: req.body?.type === 'playlist' || req.body?.type === 'song' ? req.body.type : undefined,
+      });
       res.json({
         ok: true,
         ...result,
-        message: result.playlist ? `已导入 ${result.tracks.length} 首歌曲。` : '已加入歌单。',
+        message:
+          result.message ||
+          (result.playlist ? `已导入 ${result.tracks.length} 首歌曲。` : '已加入歌单。'),
       });
     } catch (err) {
       jsonError(res, err, '网易云导入失败');
@@ -270,17 +294,17 @@ export function manageRouter({ requireApiAuth, requireCsrf }) {
 
   // —— 公告管理 ——
   router.get('/announcements', (_req, res) => res.json({ items: siteData.getAnnouncements() }));
-  router.post('/announcements/save', requireCsrf, (req, res) => {
+  router.post('/announcements/save', requireCsrf, async (req, res) => {
     try {
-      const entry = siteData.saveAnnouncement(req.body || {});
+      const entry = await siteData.saveAnnouncement(req.body || {});
       res.json({ ok: true, item: entry, message: '公告已保存。' });
     } catch (err) {
       jsonError(res, err);
     }
   });
-  router.post('/announcements/delete', requireCsrf, (req, res) => {
+  router.post('/announcements/delete', requireCsrf, async (req, res) => {
     try {
-      res.json({ ...siteData.deleteAnnouncement(req.body?.id), message: '公告已删除。' });
+      res.json({ ...(await siteData.deleteAnnouncement(req.body?.id)), message: '公告已删除。' });
     } catch (err) {
       jsonError(res, err);
     }
@@ -293,23 +317,23 @@ export function manageRouter({ requireApiAuth, requireCsrf }) {
       counts: comments.adminCount(),
     });
   });
-  router.post('/comments/status', requireCsrf, (req, res) => {
+  router.post('/comments/status', requireCsrf, async (req, res) => {
     try {
-      res.json({ ...comments.adminSetStatus(req.body?.id, req.body?.status), message: '评论状态已更新。' });
+      res.json({ ...(await comments.adminSetStatus(req.body?.id, req.body?.status)), message: '评论状态已更新。' });
     } catch (err) {
       jsonError(res, err);
     }
   });
-  router.post('/comments/delete', requireCsrf, (req, res) => {
+  router.post('/comments/delete', requireCsrf, async (req, res) => {
     try {
-      res.json({ ...comments.adminRemove(req.body?.id), message: '评论已删除。' });
+      res.json({ ...(await comments.adminRemove(req.body?.id)), message: '评论已删除。' });
     } catch (err) {
       jsonError(res, err);
     }
   });
-  router.post('/comments/reply', requireCsrf, (req, res) => {
+  router.post('/comments/reply', requireCsrf, async (req, res) => {
     try {
-      const result = comments.adminReply({
+      const result = await comments.adminReply({
         id: req.body?.id,
         comment: req.body?.comment,
         nick: req.body?.nick,

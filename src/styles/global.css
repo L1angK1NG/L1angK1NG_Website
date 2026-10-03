@@ -1,13 +1,14 @@
 /* 全站字体：霞鹜文楷等宽（LXGW WenKai Mono，基于 Klee One 的开源中文字体）。
-   自托管于 /fonts/；font-display: swap 让字体就绪前先用回退字体渲染，避免白屏。
-   只有一个 Medium 字重文件：font-weight 声明为 normal，600 以上的粗体请求由
-   浏览器仿粗渲染，保留标题与正文的层级对比。 */
-@font-face {
-  font-family: "LXGW WenKai Mono";
-  src: url("/fonts/LXGWWenKaiMono-Medium.ttf") format("truetype");
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
+   自托管于 /fonts/，已子集化为 woff2 分片（声明见 fonts.css）：按 unicode-range
+   分片按需加载，首屏只下载拉丁 + 常用汉字约 0.9MB；font-display: swap 让字体
+   就绪前先用回退字体渲染。只有一个 Medium 字重：font-weight 声明为 normal，
+   600 以上的粗体请求由浏览器仿粗渲染，保留标题与正文的层级对比。 */
+@import "./fonts.css";
+
+/* 空状态占位提示：列表为空时的访客视角文案（各页面共用）。 */
+.empty-hint {
+  color: var(--text-muted);
+  padding: 1.2rem 0;
 }
 
 :root {

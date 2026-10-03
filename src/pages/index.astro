@@ -146,7 +146,11 @@ const coverHue = (value: string) => {
       </a>
     </div>
     <div class="post-list" aria-label="文章列表">
-      {latestPosts.map((post) => <PostSummary post={post} />)}
+      {latestPosts.length > 0 ? (
+        latestPosts.map((post) => <PostSummary post={post} />)
+      ) : (
+        <p class="empty-hint">还没有发布文章，敬请期待。</p>
+      )}
     </div>
   </section>
 </BaseLayout>

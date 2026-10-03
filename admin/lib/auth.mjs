@@ -4,8 +4,11 @@
 // 密码永远不会以明文存储。ADMIN_PASSWORD_HASH 保存由 `npm run admin:hash`
 // 生成的 "<salt>:<hex>"。
 import crypto from 'node:crypto';
+import { promisify } from 'node:util';
 
 const SCRYPT_KEYLEN = 64;
+// 异步 scrypt：登录请求不阻塞事件循环（scryptSync 在高并发下会卡住整个后台）。
+const scryptAsync = promisify(crypto.scrypt);
 
 export function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const hash = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
@@ -19,15 +22,15 @@ const timingSafeEqualHex = (a, b) => {
   return crypto.timingSafeEqual(bufA, bufB);
 };
 
-export function verifyPassword(password, stored) {
+export async function verifyPassword(password, stored) {
   if (typeof stored !== 'string' || !stored.includes(':')) return false;
   const [salt, expected] = stored.split(':');
   if (!salt || !expected) return false;
-  const actual = crypto.scryptSync(password, salt, SCRYPT_KEYLEN).toString('hex');
+  const actual = (await scryptAsync(password, salt, SCRYPT_KEYLEN)).toString('hex');
   return timingSafeEqualHex(actual, expected);
 }
 
-export function verifyCredentials(username, password) {
+export async function verifyCredentials(username, password) {
   const expectedUser = process.env.ADMIN_USER || 'admin';
   const storedHash = process.env.ADMIN_PASSWORD_HASH || '';
   // 用户名同样使用恒定时间比较；仅在配置为空时才短路跳过。
@@ -35,7 +38,8 @@ export function verifyCredentials(username, password) {
     typeof username === 'string' &&
     username.length === expectedUser.length &&
     crypto.timingSafeEqual(Buffer.from(username), Buffer.from(expectedUser));
-  const passOk = verifyPassword(password, storedHash);
+  // 即使用户名不匹配也照常计算密码哈希，保持耗时一致，避免时序侧信道。
+  const passOk = await verifyPassword(password, storedHash);
   return userOk && passOk;
 }
 

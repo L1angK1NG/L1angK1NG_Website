@@ -68,7 +68,7 @@ function resolveFile(collectionName, id) {
 // 开头的文件对内容 glob 来说不可见。
 const safeSegment = (segment) =>
   segment
-    .replace(/[^A-Za-z0-9_\u4e00-\u9fa5.\-]+/g, '-')
+    .replace(/[^A-Za-z0-9_\u4e00-\u9fa5.-]+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/\.{2,}/g, '.')
     .replace(/^[-.]+|[-.]+$/g, '');
