@@ -3272,7 +3272,7 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 /* ---------- 动效：滚动显现 + 主题交叉淡入 ---------- */
 @media (prefers-reduced-motion: no-preference) {
   .js :is(
-    .hero__intro > *, .hero__picks,
+    .hero__intro > *, .hero__picks, .site-stats,
     .section__header, .section__more, .post-row,
     .related-posts, .post-nav, .article__header > *, .article__main > .article__cover,
     .proj-section__head, .proj,
@@ -3286,7 +3286,7 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
   }
 
   .js :is(
-    .hero__intro > *, .hero__picks,
+    .hero__intro > *, .hero__picks, .site-stats,
     .section__header, .section__more, .post-row,
     .related-posts, .post-nav, .article__header > *, .article__main > .article__cover,
     .proj-section__head, .proj,

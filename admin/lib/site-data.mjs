@@ -360,3 +360,30 @@ export function activeAnnouncements() {
     .filter((a) => a.enabled && (!a.startAt || a.startAt <= now) && (!a.endAt || a.endAt >= now))
     .sort((a, b) => b.createdAt - a.createdAt);
 }
+
+// —— 站点数据（开站日期，前台「网站数据」模块的运行时间起点） ——
+const SITE_META_FILE = 'site-meta.json';
+
+export function getSiteMeta() {
+  const saved = readJSON(SITE_META_FILE, {});
+  return { since: String(saved?.since || '').trim().slice(0, 10) };
+}
+
+export function saveSiteMeta(input) {
+  return withFileLock(SITE_META_FILE, async () => {
+    const since = String(input?.since || '').trim().slice(0, 10);
+    if (since) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) throw new Error('开站日期格式应为 YYYY-MM-DD');
+      const [y, m, d] = since.split('-').map(Number);
+      const parsed = new Date(Date.UTC(y, m - 1, d));
+      // 拒绝 2 月 30 日这类「格式对但日历上不存在」的日期。
+      if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) {
+        throw new Error('开站日期无效');
+      }
+      if (parsed.getTime() > Date.now()) throw new Error('开站日期不能晚于今天');
+    }
+    const out = { since };
+    await writeJSONAsync(SITE_META_FILE, out);
+    return out;
+  });
+}

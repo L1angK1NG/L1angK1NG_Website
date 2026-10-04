@@ -9,9 +9,24 @@ import * as siteData from './site-data.mjs';
 import * as music from './music.mjs';
 import * as projects from './projects.mjs';
 import * as stats from './stats.mjs';
+import * as content from './content.mjs';
 
 const jsonError = (res, err, fallback = '操作失败') =>
   res.status(400).json({ error: err?.message || fallback });
+
+// 前台「网站数据」模块展示的聚合数据（公开接口与后台「站点数据」页共用一份口径）。
+// 总文章量只计已发布的文章（草稿不计），与前台归档页的「N 篇文章」一致；
+// 总评论量为系统内全部评论（含回复）。
+export function siteStats() {
+  const s = stats.summary();
+  return {
+    since: siteData.getSiteMeta().since,
+    posts: content.listEntries('posts').filter((e) => !e.data.draft).length,
+    comments: comments.adminCount().total,
+    totalViews: s.total,
+    todayViews: s.today,
+  };
+}
 
 // ============================ 公开接口 ============================
 export function publicRouter() {
@@ -156,6 +171,13 @@ export function publicRouter() {
       nav: siteData.getNavLinks(),
       announcements: siteData.activeAnnouncements(),
     });
+  });
+
+  // —— 站点数据（前台「网站数据」模块：运行时间 / 文章 / 评论 / 访问量） ——
+  router.get('/site-stats', (req, res) => {
+    const limit = rateLimit(req, { key: 'site-stats', max: 60, windowMs: 60 * 1000 });
+    if (!limit.ok) return res.status(429).json({ error: '请求过于频繁，请稍后再试。' });
+    res.json(siteStats());
   });
 
   return router;
@@ -347,6 +369,16 @@ export function manageRouter({ requireApiAuth, requireCsrf }) {
 
   // —— 访问统计 ——
   router.get('/stats', (_req, res) => res.json(stats.summary({ pathsLimit: 50, regionsLimit: 50 })));
+
+  // —— 站点数据（开站日期） ——
+  router.get('/site-meta', (_req, res) => res.json({ meta: siteData.getSiteMeta() }));
+  router.post('/site-meta', requireCsrf, async (req, res) => {
+    try {
+      res.json({ ok: true, meta: await siteData.saveSiteMeta(req.body || {}), message: '开站日期已保存，前台即时生效。' });
+    } catch (err) {
+      jsonError(res, err);
+    }
+  });
 
   return router;
 }

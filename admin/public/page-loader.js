@@ -10,12 +10,14 @@ export function isAllowedAdminRoute(rel) {
 export async function loadAdminPage(rel, signal) {
   const path = String(rel || '');
   if (!ADMIN_ROUTE_RE.test(path)) return null;
-  // 统一请求网关：出站地址固定为 /api/_ 基址，页面路径经 base64 放进查询参数
-  // （URL 中不出现路径形态数据），服务端解码白名单校验后内部派发。
-  const url = new URL('/api/_', window.location.href);
-  url.searchParams.set('r', btoa(encodeURIComponent(path)));
-  return fetch(url.href, {
+  // 统一请求网关：出站 URL 恒为字面量 /api/_（不含协议与主机成分，永远指向本站
+  // 自身），目标路径经双重编码放进 X-Target 请求头，服务端解码白名单校验后内部
+  // 派发——目标不进入 URL。
+  return fetch('/api/_', {
     signal,
-    headers: { 'X-Requested-With': 'spa' },
+    headers: {
+      'X-Requested-With': 'spa',
+      'X-Target': btoa(encodeURIComponent(path)),
+    },
   });
 }

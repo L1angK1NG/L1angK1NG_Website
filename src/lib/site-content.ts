@@ -202,3 +202,40 @@ export function getNavCategories(): NavCategory[] {
   );
   return (saved.categories ?? []).filter((c) => Boolean(c && c.name && Array.isArray(c.links)));
 }
+
+// —— 站点数据（data/site-meta.json：后台「站点数据」页设定的开站日期） ——
+export interface SiteMeta {
+  // 开站日期 YYYY-MM-DD；未设置为空字符串。
+  since: string;
+}
+
+export function getSiteMeta(): SiteMeta {
+  const saved = readDataJson<{ since?: string }>(path.join(dataDir(), 'site-meta.json'), { since: '' });
+  return { since: String(saved.since ?? '').trim().slice(0, 10) };
+}
+
+// —— 前台「网站数据」模块的构建期兜底快照 ——
+// 实时值由 /api/public/site-stats 提供；静态预览 / 接口不可用时展示构建时刻
+// 的快照。日界线与 admin/lib/stats.mjs 一致（北京时间 00:00）。
+export interface SiteStatsSnapshot {
+  since: string;
+  comments: number;
+  totalViews: number;
+  todayViews: number;
+}
+
+export function getSiteStatsSnapshot(): SiteStatsSnapshot {
+  const { since } = getSiteMeta();
+  const stats = readDataJson<{ total?: number; days?: Record<string, number> }>(
+    path.join(dataDir(), 'stats.json'),
+    { total: 0, days: {} },
+  );
+  const comments = readDataJson<unknown[]>(path.join(dataDir(), 'comments.json'), []);
+  const todayKey = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return {
+    since,
+    comments: Array.isArray(comments) ? comments.length : 0,
+    totalViews: Number(stats.total) || 0,
+    todayViews: Number(stats.days?.[todayKey]) || 0,
+  };
+}

@@ -90,6 +90,11 @@ img { max-width: 100%; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 16px; padding: 6px 8px 18px; }
 .brand__mark { color: var(--primary); }
 .nav { display: flex; flex-direction: column; gap: 2px; }
+.nav__group {
+  padding: 12px 10px 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.12em;
+  color: var(--text-faint); user-select: none;
+}
+.nav__group:first-child { padding-top: 2px; }
 .nav__item {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 12px; border-radius: var(--radius-sm);
@@ -122,6 +127,7 @@ img { max-width: 100%; }
 }
 .stat:hover { border-color: var(--border-strong); }
 .stat__value { font-size: 30px; font-weight: 680; letter-spacing: -0.02em; }
+.stat__value--text { font-size: 20px; white-space: nowrap; }
 .stat__label { color: var(--text-muted); font-size: 13px; }
 .kv { display: grid; gap: 10px; }
 .kv > div { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); }
@@ -156,6 +162,19 @@ img { max-width: 100%; }
 .field__row .input { flex: 1; }
 .field--inline { display: flex; align-items: center; gap: 8px; }
 .field--inline .field__label { margin: 0; }
+
+/* —— 日期选择控件（年月日增减 + 日历选择，两种方式联动） —— */
+.date-pick { display: flex; flex-direction: column; gap: 12px; }
+.date-pick__steppers { display: flex; flex-wrap: wrap; gap: 10px 16px; }
+.date-stepper { display: inline-flex; align-items: center; gap: 6px; }
+.date-stepper__input { width: 82px; text-align: center; }
+.date-stepper__unit { color: var(--text-muted); }
+.date-stepper__btn {
+  width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-size: 15px; line-height: 1; cursor: pointer;
+}
+.date-stepper__btn:hover { border-color: var(--border-strong); background: var(--bg-tint); }
+.date-pick__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .input {
   width: 100%; padding: 9px 12px; border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
@@ -257,6 +276,7 @@ img { max-width: 100%; }
 .login-card { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 30px; box-shadow: var(--shadow); }
 .login-card .brand { padding: 0 0 6px; }
 .login-sub { margin: 0 0 20px; color: var(--text-muted); }
+.login-remember { margin: -4px 0 8px; font-size: 13px; color: var(--text-muted); }
 .alert { padding: 10px 12px; border-radius: var(--radius-sm); margin-bottom: 16px; font-size: 14px; }
 .alert--error {
   display: flex; align-items: flex-start; gap: 8px;
@@ -287,6 +307,7 @@ img { max-width: 100%; }
   .sidebar { width: 100%; height: auto; position: static; flex-direction: row; align-items: center; gap: 10px; overflow-x: auto; }
   .brand { padding: 0 8px 0 0; white-space: nowrap; }
   .nav { flex-direction: row; gap: 4px; }
+  .nav__group { display: none; }
   .sidebar__foot { margin: 0 0 0 auto; border-top: none; padding: 0; white-space: nowrap; }
   .main { padding: 20px 16px 48px; }
   .editor { grid-template-columns: 1fr; }

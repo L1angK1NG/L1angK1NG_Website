@@ -1,0 +1,164 @@
+---
+// 网站数据：运行时间 / 总文章量 / 总评论量 / 总访问量 / 今日访问量。
+// 构建时先渲染一份快照值兜底（静态预览也能看到数字），浏览器加载后再经
+// /api/public/site-stats 刷新为实时值；运行时间由后台「站点数据」页设定的
+// 开站日期在浏览器实时计算（长停留跨天自动跟进）。
+import { getPublishedPosts } from '../lib/posts';
+import { getSiteStatsSnapshot } from '../lib/site-content';
+import { formatUptime } from '../lib/uptime';
+
+const snapshot = getSiteStatsSnapshot();
+const postCount = (await getPublishedPosts()).length;
+const uptime = formatUptime(snapshot.since);
+---
+
+<section class="site-stats" data-site-stats data-since={snapshot.since} aria-label="网站数据">
+  <div class="site-stats__inner">
+    {uptime ? (
+      <div class="site-stats__item" data-stats-item="uptime">
+        <strong class="site-stats__value site-stats__value--text" data-stats-value="uptime">{uptime}</strong>
+        <span class="site-stats__label">运行时间</span>
+      </div>
+    ) : (
+      // 开站日期未设置时不展示；后台设定后（接口返回）由脚本补显。
+      <div class="site-stats__item" data-stats-item="uptime" hidden>
+        <strong class="site-stats__value site-stats__value--text" data-stats-value="uptime"></strong>
+        <span class="site-stats__label">运行时间</span>
+      </div>
+    )}
+    <div class="site-stats__item">
+      <strong class="site-stats__value" data-stats-value="posts">{postCount}</strong>
+      <span class="site-stats__label">总文章量</span>
+    </div>
+    <div class="site-stats__item">
+      <strong class="site-stats__value" data-stats-value="comments">{snapshot.comments}</strong>
+      <span class="site-stats__label">总评论量</span>
+    </div>
+    <div class="site-stats__item">
+      <strong class="site-stats__value" data-stats-value="totalViews">{snapshot.totalViews}</strong>
+      <span class="site-stats__label">总访问量</span>
+    </div>
+    <div class="site-stats__item">
+      <strong class="site-stats__value" data-stats-value="todayViews">{snapshot.todayViews}</strong>
+      <span class="site-stats__label">今日访问量</span>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { formatUptime } from '../lib/uptime';
+
+  // 运行时间的定时刷新句柄（换页后重新计时，避免叠加多个定时器）。
+  let uptimeTimer = 0;
+
+  const initSiteStats = () => {
+    const root = document.querySelector<HTMLElement>('[data-site-stats]');
+    if (!root || root.dataset.ready === '1') return;
+    root.dataset.ready = '1';
+
+    const since = root.getAttribute('data-since') || '';
+    const uptimeItem = root.querySelector<HTMLElement>('[data-stats-item="uptime"]');
+    const uptimeEl = root.querySelector<HTMLElement>('[data-stats-value="uptime"]');
+
+    // 运行时间按开站日期实时计算（格式 x年x月x天）；每分钟跟一次，跨天自动更新。
+    const renderUptime = () => {
+      const text = formatUptime(since);
+      if (!text) return;
+      if (uptimeEl) uptimeEl.textContent = text;
+      uptimeItem?.removeAttribute('hidden');
+    };
+    renderUptime();
+    clearInterval(uptimeTimer);
+    uptimeTimer = window.setInterval(renderUptime, 60 * 1000);
+
+    // 实时数值：经 API 哨兵门控拉取，无后端时保留构建时快照（不产生报错）。
+    const setNum = (key: string, value: unknown) => {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return;
+      const el = root.querySelector<HTMLElement>(`[data-stats-value="${key}"]`);
+      if (el) el.textContent = String(value);
+    };
+    const api = window.__blogApi;
+    const request = api?.gateFetch
+      ? api.gateFetch('/api/public/site-stats')
+      : fetch('/api/public/site-stats');
+    Promise.resolve(request)
+      .then((r) => (r && r.ok ? r.json() : Promise.reject(new Error('load fail'))))
+      .then((data) => {
+        setNum('posts', data.posts);
+        setNum('comments', data.comments);
+        setNum('totalViews', data.totalViews);
+        setNum('todayViews', data.todayViews);
+        // 后台改过开站日期时，用接口返回的最新开站日期重算运行时间。
+        if (typeof data.since === 'string' && data.since && data.since !== since) {
+          const text = formatUptime(data.since);
+          if (text && uptimeEl) uptimeEl.textContent = text;
+        }
+      })
+      .catch(() => {
+        /* 拉取失败保留快照值（降级标记已由哨兵处理） */
+      });
+  };
+
+  initSiteStats();
+  document.addEventListener('astro:page-load', initSiteStats);
+</script>
+
+<style>
+  .site-stats {
+    width: 100%;
+    margin: 2.5rem 0 0;
+  }
+  .site-stats__inner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.1rem 2.6rem;
+    padding: 1.15rem 1.6rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+  .site-stats__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.18rem;
+    min-width: 5.2rem;
+  }
+  .site-stats__value {
+    font-size: 1.12rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+  .site-stats__value--text {
+    color: var(--brand);
+  }
+  .site-stats__label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  @media (max-width: 560px) {
+    .site-stats {
+      margin-top: 2rem;
+    }
+    .site-stats__inner {
+      gap: 0.95rem 1.6rem;
+      padding: 1rem 1.1rem;
+    }
+    .site-stats__item {
+      min-width: 4.4rem;
+    }
+    .site-stats__value {
+      font-size: 1.02rem;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .site-stats__value {
+      transition: none;
+    }
+  }
+</style>

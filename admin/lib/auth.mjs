@@ -4,7 +4,10 @@
 // 密码永远不会以明文存储。ADMIN_PASSWORD_HASH 保存由 `npm run admin:hash`
 // 生成的 "<salt>:<hex>"。
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { promisify } from 'node:util';
+import { DATA_DIR } from './store.mjs';
 
 const SCRYPT_KEYLEN = 64;
 // 异步 scrypt：登录请求不阻塞事件循环（scryptSync 在高并发下会卡住整个后台）。
@@ -110,3 +113,101 @@ export function recordFailure(req) {
 export function clearFailures(req) {
   attempts.delete(clientKey(req));
 }
+
+// —— 30 分钟免密登录（记住登录状态） ——
+// 登录成功后给浏览器签发一个随机「记住令牌」（256 bit，只在 Cookie 里出现一次），
+// 服务端只保存它的 SHA-256 哈希 + 过期时间，并持久化到 data/login-tokens.json：
+// 后台服务重启后，同一浏览器在免密期内仍然无需重复输入密码。
+// 有效期 30 分钟、每次访问顺延（滑动窗口）：30 分钟内多次访问无需再输密码；
+// 超时未访问即过期，过期条目随时清理，下次访问回到登录页。退出登录立即吊销。
+const REMEMBER_TTL_MS = 30 * 60 * 1000;
+const REMEMBER_FILE = 'login-tokens.json';
+
+const tokenHash = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+// 内存 Map<哈希, { user, expiresAt }> + 文件持久化。写文件节流：令牌顺延只改
+// 过期时间，最多每 30 秒落盘一次；签发 / 吊销则立即落盘。
+const rememberTokens = new Map();
+let rememberLoaded = false;
+let rememberDirty = false;
+let rememberLastFlush = 0;
+
+function loadRememberTokens() {
+  if (rememberLoaded) return;
+  rememberLoaded = true;
+  try {
+    const file = path.join(DATA_DIR, REMEMBER_FILE);
+    if (!fs.existsSync(file)) return;
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const [hash, rec] of Object.entries(saved?.tokens || {})) {
+      if (rec && typeof rec.expiresAt === 'number' && rec.expiresAt > Date.now()) {
+        rememberTokens.set(hash, rec);
+      }
+    }
+  } catch {
+    /* 文件损坏时从零开始，不影响正常登录 */
+  }
+}
+
+function flushRememberTokens(force = false) {
+  const now = Date.now();
+  if (!force && (!rememberDirty || now - rememberLastFlush < 30 * 1000)) return;
+  rememberDirty = false;
+  rememberLastFlush = now;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const file = path.join(DATA_DIR, REMEMBER_FILE);
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify({ tokens: Object.fromEntries(rememberTokens) }, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
+  } catch {
+    /* 落盘失败不影响内存态；重启后回到登录页即可 */
+  }
+}
+
+// 定期清理过期令牌并落盘，避免文件与内存无限增长。
+setInterval(() => {
+  loadRememberTokens();
+  const now = Date.now();
+  let removed = false;
+  for (const [hash, rec] of rememberTokens) {
+    if (rec.expiresAt <= now) {
+      rememberTokens.delete(hash);
+      removed = true;
+    }
+  }
+  if (removed) flushRememberTokens(true);
+}, 5 * 60 * 1000).unref?.();
+
+// 签发记住令牌，返回要写进 Cookie 的明文令牌（服务端不留明文）。
+export function issueRememberToken(user) {
+  loadRememberTokens();
+  const token = crypto.randomBytes(32).toString('hex');
+  rememberTokens.set(tokenHash(token), { user: String(user), expiresAt: Date.now() + REMEMBER_TTL_MS });
+  flushRememberTokens(true);
+  return token;
+}
+
+// 校验并顺延令牌：有效返回 { user } 并把有效期续到 30 分钟后；无效 / 过期返回 null。
+export function touchRememberToken(token) {
+  loadRememberTokens();
+  const hash = tokenHash(token);
+  const rec = rememberTokens.get(hash);
+  if (!rec) return null;
+  if (rec.expiresAt <= Date.now()) {
+    rememberTokens.delete(hash);
+    flushRememberTokens(true);
+    return null;
+  }
+  rec.expiresAt = Date.now() + REMEMBER_TTL_MS;
+  rememberDirty = true;
+  flushRememberTokens();
+  return { user: rec.user };
+}
+
+export function revokeRememberToken(token) {
+  loadRememberTokens();
+  if (rememberTokens.delete(tokenHash(token))) flushRememberTokens(true);
+}
+
+export { REMEMBER_TTL_MS };

@@ -13,8 +13,19 @@ import { logWarn } from './lib/log.mjs';
 
 loadEnv();
 
-const { newCsrfToken, requireCsrf, verifyCredentials, isLocked, recordFailure, clearFailures, MAX_LOGIN_ATTEMPTS } =
-  await import('./lib/auth.mjs');
+const {
+  newCsrfToken,
+  requireCsrf,
+  verifyCredentials,
+  isLocked,
+  recordFailure,
+  clearFailures,
+  MAX_LOGIN_ATTEMPTS,
+  issueRememberToken,
+  touchRememberToken,
+  revokeRememberToken,
+  REMEMBER_TTL_MS,
+} = await import('./lib/auth.mjs');
 const content = await import('./lib/content.mjs');
 const build = await import('./lib/build.mjs');
 const backup = await import('./lib/backup.mjs');
@@ -66,10 +77,13 @@ app.use(express.json({ limit: '2mb' }));
 const DISPATCH_RE = /^(?:\/api\/(?!_)[\w\-/.]*|\/admin(?:\/[\w-]+)*)(?:\?[^#\s]*)?$/;
 
 app.all('/api/_', (req, res) => {
-  // r 参数为 base64(encodeURIComponent(目标路径))，解码后必须通过路由白名单。
+  // 目标路径经 X-Target 请求头（或兼容的 r 查询参数）传入，值为
+  // base64(encodeURIComponent(目标路径))，解码后必须通过路由白名单。
+  // 出站 URL 恒为字面量 /api/_，目标不进入 URL。
   let target = '';
   try {
-    target = decodeURIComponent(Buffer.from(String(req.query.r || ''), 'base64').toString('ascii'));
+    const raw = req.get('x-target') || String(req.query.r || '');
+    target = decodeURIComponent(Buffer.from(String(raw || ''), 'base64').toString('ascii'));
   } catch {
     return res.status(400).json({ error: '非法的接口地址' });
   }
@@ -119,19 +133,69 @@ app.use((_req, res, next) => {
   next();
 });
 
+// —— 登录状态（30 分钟滑动窗口） ——
+// 会话与「记住令牌」都按 30 分钟免密期管理：期间每次访问自动顺延，
+// 30 分钟未访问则回到登录页。会话丢失（过期 / 服务重启）时由记住令牌
+// 静默重建，因此同一浏览器在免密期内无需重复输入密码。
+const REMEMBER_COOKIE = 'admin_remember';
+
 app.use(
   session({
     secret: resolveSessionSecret(),
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
       httpOnly: true,
       sameSite: 'strict',
       secure: COOKIE_SECURE,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: REMEMBER_TTL_MS,
     },
   }),
 );
+
+// 解析请求 Cookie（不引入 cookie-parser，只需读一个自有令牌）。
+function readCookie(req, name) {
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx < 0) continue;
+    if (part.slice(0, idx).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(idx + 1).trim());
+      } catch {
+        return '';
+      }
+    }
+  }
+  return '';
+}
+
+const rememberCookieOptions = () => ({
+  httpOnly: true,
+  sameSite: 'strict',
+  secure: COOKIE_SECURE,
+  maxAge: REMEMBER_TTL_MS,
+  path: '/',
+});
+
+// 免密登录门：浏览器仍持有未过期的记住令牌时静默重建会话并顺延有效期；
+// 令牌失效则直接清掉 Cookie，走正常登录流程。
+app.use((req, res, next) => {
+  const token = readCookie(req, REMEMBER_COOKIE);
+  if (!token) return next();
+  const hit = touchRememberToken(token);
+  if (!hit) {
+    res.clearCookie(REMEMBER_COOKIE, { path: '/' });
+    return next();
+  }
+  res.cookie(REMEMBER_COOKIE, token, rememberCookieOptions());
+  if (!req.session.user) {
+    req.session.user = hit.user;
+    req.session.csrfToken = newCsrfToken();
+  }
+  return next();
+});
 
 // —— 身份验证中间件 ——
 const ensureCsrf = (req) => {
@@ -248,13 +312,19 @@ app.get('/admin/projects', requirePageAuth, wrap(async (req, res) => {
   res.send(views.projectsPage({ user: req.session.user, boot: currentBoot(req), projects: listProjects() }));
 }));
 
-app.get('/admin/nav-links', requirePageAuth, wrap(async (req, res) => {
-  res.send(views.navLinksPage({ user: req.session.user, boot: currentBoot(req), nav: siteData.getNavLinks() }));
+// 导航与友链合并为一页管理；旧地址重定向，书签不失效。
+app.get('/admin/links', requirePageAuth, wrap(async (req, res) => {
+  res.send(
+    views.linksPage({
+      user: req.session.user,
+      boot: currentBoot(req),
+      nav: siteData.getNavLinks(),
+      friends: siteData.getFriends(),
+    }),
+  );
 }));
-
-app.get('/admin/friends', requirePageAuth, wrap(async (req, res) => {
-  res.send(views.friendsPage({ user: req.session.user, boot: currentBoot(req), friends: siteData.getFriends() }));
-}));
+app.get('/admin/nav-links', requirePageAuth, (_req, res) => res.redirect('/admin/links'));
+app.get('/admin/friends', requirePageAuth, (_req, res) => res.redirect('/admin/links'));
 
 app.get('/admin/music', requirePageAuth, wrap(async (req, res) => {
   const { listTracks } = await import('./lib/music.mjs');
@@ -279,10 +349,20 @@ app.get('/admin/comments', requirePageAuth, wrap(async (req, res) => {
   );
 }));
 
-app.get('/admin/stats', requirePageAuth, wrap(async (req, res) => {
+// —— 站点数据（开站日期 + 访客数据 + 访问统计，原「访问统计」页并入） ——
+app.get('/admin/site-stats', requirePageAuth, wrap(async (req, res) => {
   const { summary } = await import('./lib/stats.mjs');
-  res.send(views.statsPage({ user: req.session.user, boot: currentBoot(req), stats: summary({ pathsLimit: 50, regionsLimit: 50 }) }));
+  res.send(
+    views.siteStatsPage({
+      user: req.session.user,
+      boot: currentBoot(req),
+      meta: siteData.getSiteMeta(),
+      preview: routesLib.siteStats(),
+      stats: summary({ pathsLimit: 50, regionsLimit: 50 }),
+    }),
+  );
 }));
+app.get('/admin/stats', requirePageAuth, (_req, res) => res.redirect('/admin/site-stats'));
 
 // —— 登录认证 API ——
 app.post('/api/login', requireCsrf, wrap(async (req, res) => {
@@ -300,21 +380,31 @@ app.post('/api/login', requireCsrf, wrap(async (req, res) => {
   }
   clearFailures(req);
 
+  // 勾选「记住登录状态」时签发 30 分钟免密令牌（默认勾选）。
+  const remember = req.body?.remember === true || req.body?.remember === 'on';
+  const user = process.env.ADMIN_USER || 'admin';
+  const rememberToken = remember ? issueRememberToken(user) : null;
+
   // 登录时轮换 session id 以防止会话固定攻击，然后存储身份信息。
   req.session.regenerate((err) => {
     if (err) return res.status(500).json({ error: '登录失败，请重试。' });
-    req.session.user = process.env.ADMIN_USER || 'admin';
+    req.session.user = user;
     req.session.csrfToken = newCsrfToken();
     req.session.save((saveErr) => {
       if (saveErr) return res.status(500).json({ error: '登录失败，请重试。' });
+      if (rememberToken) res.cookie(REMEMBER_COOKIE, rememberToken, rememberCookieOptions());
       return res.json({ ok: true, user: req.session.user, csrfToken: req.session.csrfToken });
     });
   });
 }));
 
 app.post('/api/logout', requireCsrf, (req, res) => {
+  // 退出登录同时吊销记住令牌：共享设备上退出后不再自动登录。
+  const token = readCookie(req, REMEMBER_COOKIE);
+  if (token) revokeRememberToken(token);
   req.session.destroy(() => {
     res.clearCookie('connect.sid');
+    res.clearCookie(REMEMBER_COOKIE, { path: '/' });
     res.json({ ok: true });
   });
 });

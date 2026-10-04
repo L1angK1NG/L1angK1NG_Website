@@ -46,14 +46,9 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
   // 所有请求都是发给本后台自身的接口，其余地址一律拒绝。
   const API_ROUTE_RE = /^\/api\/[\w\-/.]*(?:\?[^#\s]*)?$/;
 
-  // 统一请求网关：出站地址固定为 /api/_ 基址，真实接口路径经 base64 放进
-  // 查询参数（URL 中不出现路径形态数据），服务端解码白名单校验后内部派发。
-  function apiGatewayUrl(target) {
-    const url = new URL('/api/_', window.location.href);
-    url.searchParams.set('r', btoa(encodeURIComponent(String(target || ''))));
-    return url;
-  }
-
+  // 统一请求网关：出站 URL 恒为字面量 /api/_（不含协议与主机成分，永远指向本站
+  // 自身），真实接口路径经双重编码放进 X-Target 请求头，服务端解码白名单校验后
+  // 内部派发——目标不进入 URL。
   async function api(path, { method = 'GET', body, raw, noAuthRedirect } = {}) {
     const endpoint = String(path || '');
     if (!API_ROUTE_RE.test(endpoint)) {
@@ -62,14 +57,14 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
     const opts = { method, headers: {} };
     const token = window.__BOOT__?.csrfToken;
     if (token) opts.headers['X-CSRF-Token'] = token;
+    opts.headers['X-Target'] = btoa(encodeURIComponent(endpoint));
     if (raw) {
       opts.body = body;
     } else if (body !== undefined) {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
     }
-    const requestUrl = apiGatewayUrl(endpoint);
-    const res = await fetch(requestUrl.href, opts);
+    const res = await fetch('/api/_', opts);
     if (res.status === 401 && !noAuthRedirect) {
       window.location.href = '/admin/login';
       throw new Error('未登录');
@@ -121,7 +116,12 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
         await api('/api/login', {
           method: 'POST',
           noAuthRedirect: true,
-          body: { username: fd.get('username'), password: fd.get('password') },
+          body: {
+            username: fd.get('username'),
+            password: fd.get('password'),
+            // 「30 分钟内记住登录状态」复选框（默认勾选）。
+            remember: fd.get('remember') === 'on',
+          },
         });
         window.location.href = '/admin';
       } catch (err) {
@@ -405,6 +405,117 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
         toast(err.message, true);
         profileSave.disabled = false;
         profileSave.textContent = '保存';
+      }
+    });
+  }
+
+  // ===== 站点数据（开站日期） =====
+  const siteMetaSave = document.getElementById('site-meta-save');
+  if (siteMetaSave) {
+    const dateInput = document.getElementById('site-since');
+    const yEl = document.getElementById('site-year');
+    const mEl = document.getElementById('site-month');
+    const dEl = document.getElementById('site-day');
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+
+    // 数字控件（年月日）↔ 日期输入框双向联动：日历选完回填数字，增减改完写回日期。
+    const syncFromInput = () => {
+      const raw = (dateInput?.value || '').split('-');
+      if (!raw[0]) {
+        const now = new Date();
+        yEl.value = String(now.getFullYear());
+        mEl.value = String(now.getMonth() + 1);
+        dEl.value = String(now.getDate());
+        return;
+      }
+      yEl.value = String(Number(raw[0]));
+      mEl.value = String(Number(raw[1]));
+      dEl.value = String(Number(raw[2]));
+    };
+    const syncToInput = () => {
+      const y = Number(yEl.value) || new Date().getFullYear();
+      const m = Math.min(12, Math.max(1, Number(mEl.value) || 1));
+      const d = Math.min(daysInMonth(y, m), Math.max(1, Number(dEl.value) || 1));
+      yEl.value = String(y);
+      mEl.value = String(m);
+      dEl.value = String(d);
+      if (dateInput) dateInput.value = `${y}-${pad(m)}-${pad(d)}`;
+    };
+
+    // −／＋ 按真实日历进位：日期加减跨月跨年，月份增减时日期自动落到月末。
+    const stepDate = (unit, delta) => {
+      const y = Number(yEl.value) || new Date().getFullYear();
+      const m = Math.min(12, Math.max(1, Number(mEl.value) || 1));
+      const d = Math.min(daysInMonth(y, m), Math.max(1, Number(dEl.value) || 1));
+      let ny = y;
+      let nm = m;
+      let nd = d;
+      if (unit === 'day') {
+        const t = new Date(y, m - 1, d + delta);
+        ny = t.getFullYear();
+        nm = t.getMonth() + 1;
+        nd = t.getDate();
+      } else if (unit === 'month') {
+        const t = new Date(y, m - 1 + delta, 1);
+        ny = t.getFullYear();
+        nm = t.getMonth() + 1;
+        nd = Math.min(d, daysInMonth(ny, nm));
+      } else if (unit === 'year') {
+        ny = y + delta;
+        nd = Math.min(d, daysInMonth(ny, m));
+      }
+      yEl.value = String(ny);
+      mEl.value = String(nm);
+      dEl.value = String(nd);
+      syncToInput();
+    };
+
+    syncFromInput();
+    dateInput?.addEventListener('change', syncFromInput);
+    // 输入时轻同步（不回写数字框，避免打字时光标跳动），失焦时再做钳制归位。
+    const syncSoft = () => {
+      const y = Number(yEl.value);
+      const m = Number(mEl.value);
+      const d = Number(dEl.value);
+      if (dateInput && y >= 1970 && y <= 9999 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        dateInput.value = `${y}-${pad(m)}-${pad(d)}`;
+      }
+    };
+    [yEl, mEl, dEl].forEach((el) => {
+      el?.addEventListener('input', syncSoft);
+      el?.addEventListener('change', syncToInput);
+    });
+    document.querySelectorAll('[data-date-step]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const unit = btn.closest('[data-step-unit]')?.getAttribute('data-step-unit');
+        const delta = Number(btn.getAttribute('data-date-step')) || 0;
+        stepDate(unit, delta);
+      });
+    });
+    document.getElementById('site-since-today')?.addEventListener('click', () => {
+      const now = new Date();
+      if (dateInput) dateInput.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      syncFromInput();
+    });
+
+    siteMetaSave.addEventListener('click', async () => {
+      siteMetaSave.disabled = true;
+      siteMetaSave.textContent = '保存中…';
+      try {
+        // 保存前强制归位一次：手输数字后未失焦就点保存，也保证日期是最新值。
+        syncToInput();
+        const result = await api('/api/manage/site-meta', {
+          method: 'POST',
+          body: { since: val('site-since') },
+        });
+        toast(result.message || '已保存');
+        reload();
+      } catch (err) {
+        toast(err.message, true);
+        siteMetaSave.disabled = false;
+        siteMetaSave.textContent = '保存开站日期';
       }
     });
   }

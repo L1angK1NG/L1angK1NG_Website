@@ -1,6 +1,7 @@
 ---
 import Icon from '../components/Icon.astro';
 import PostSummary from '../components/PostSummary.astro';
+import SiteStats from '../components/SiteStats.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import {
   formatDate,
@@ -66,6 +67,9 @@ const coverHue = (value: string) => {
         </span>
       </div>
     </div>
+
+    {/* 网站数据：置于首屏简介与「精选」分隔线之间 */}
+    <SiteStats />
 
     {heroPicks.length > 0 && (
       <aside class="hero__picks" aria-label="精选文章">

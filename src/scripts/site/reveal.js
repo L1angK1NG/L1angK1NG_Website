@@ -3,7 +3,7 @@
 // 把新页面以「隐藏待显现」状态截进快照。
 
 const SELECTOR =
-  '.hero__intro > *, .hero__picks, .section__header, .section__more, .post-row, .related-posts, .post-nav, .article__header > *, .article__main > .article__cover, .proj-section__head, .proj, .page-header, .archive-summary, .archive-year__head, .about__intro > *, .note';
+  '.hero__intro > *, .hero__picks, .site-stats, .section__header, .section__more, .post-row, .related-posts, .post-nav, .article__header > *, .article__main > .article__cover, .proj-section__head, .proj, .page-header, .archive-summary, .archive-year__head, .about__intro > *, .note';
 
 // 换页回调里先显现每个进场子元素，再让过渡接管：swap 回调无需读取几何信息，
 // 也不会延长过渡的空白间隔。

@@ -58,28 +58,56 @@ function renderField(name, value) {
   }
 }
 
-const NAV = [
-  { href: '/admin', key: 'dashboard', label: '仪表盘', icon: '◈' },
-  { href: '/admin/posts', key: 'posts', label: '文章', icon: '✎' },
-  { href: '/admin/notes', key: 'notes', label: '随笔', icon: '☰' },
-  { href: '/admin/projects', key: 'projects', label: '项目', icon: '◆' },
-  { href: '/admin/nav-links', key: 'nav-links', label: '网址导航', icon: '⌘' },
-  { href: '/admin/friends', key: 'friends', label: '友链', icon: '❋' },
-  { href: '/admin/music', key: 'music', label: '音乐', icon: '♪' },
-  { href: '/admin/announcements', key: 'announcements', label: '公告', icon: '▤' },
-  { href: '/admin/comments', key: 'comments', label: '评论', icon: '✦' },
-  { href: '/admin/site-content', key: 'site-content', label: '页面内容', icon: '❏' },
-  { href: '/admin/stats', key: 'stats', label: '访问统计', icon: '◔' },
-  { href: '/admin/media', key: 'media', label: '媒体', icon: '▣' },
-  { href: '/admin/build', key: 'build', label: '构建发布', icon: '⟳' },
-  { href: '/', key: 'site', label: '查看发布结果', icon: '⌂', external: true },
+// 侧边栏按用途分组排布：内容 / 页面 / 互动 / 数据 / 发布。
+// 「导航 · 友链」由原「网址导航」「友链」两页合并；「站点数据」合并了原「访问统计」。
+const NAV_GROUPS = [
+  { items: [{ href: '/admin', key: 'dashboard', label: '仪表盘', icon: '◈' }] },
+  {
+    label: '内容',
+    items: [
+      { href: '/admin/posts', key: 'posts', label: '文章', icon: '✎' },
+      { href: '/admin/notes', key: 'notes', label: '随笔', icon: '☰' },
+      { href: '/admin/projects', key: 'projects', label: '项目', icon: '◆' },
+      { href: '/admin/media', key: 'media', label: '媒体', icon: '▣' },
+    ],
+  },
+  {
+    label: '页面',
+    items: [
+      { href: '/admin/site-content', key: 'site-content', label: '页面文案', icon: '❏' },
+      { href: '/admin/links', key: 'links', label: '导航 · 友链', icon: '⌘' },
+      { href: '/admin/music', key: 'music', label: '音乐', icon: '♪' },
+      { href: '/admin/announcements', key: 'announcements', label: '公告', icon: '▤' },
+    ],
+  },
+  {
+    label: '互动',
+    items: [{ href: '/admin/comments', key: 'comments', label: '评论', icon: '✦' }],
+  },
+  {
+    label: '数据',
+    items: [{ href: '/admin/site-stats', key: 'site-stats', label: '站点数据', icon: '◎' }],
+  },
+  {
+    label: '发布',
+    items: [
+      { href: '/admin/build', key: 'build', label: '构建发布', icon: '⟳' },
+      { href: '/', key: 'site', label: '查看网站', icon: '⌂', external: true },
+    ],
+  },
 ];
 
 export function layout({ title, active, user, boot, content }) {
-  const nav = NAV.map((item) => {
-    const cls = item.key === active ? 'nav__item nav__item--active' : 'nav__item';
-    const attrs = item.external ? ' target="_blank" rel="noopener"' : '';
-    return `<a class="${cls}" href="${item.href}"${attrs}><span class="nav__icon">${item.icon}</span>${item.label}</a>`;
+  const nav = NAV_GROUPS.map((group) => {
+    const label = group.label ? `<div class="nav__group">${esc(group.label)}</div>` : '';
+    const items = group.items
+      .map((item) => {
+        const cls = item.key === active ? 'nav__item nav__item--active' : 'nav__item';
+        const attrs = item.external ? ' target="_blank" rel="noopener"' : '';
+        return `<a class="${cls}" href="${item.href}"${attrs}><span class="nav__icon">${item.icon}</span>${item.label}</a>`;
+      })
+      .join('\n        ');
+    return `${label}${items}`;
   }).join('\n        ');
 
   return `<!doctype html>
@@ -135,6 +163,7 @@ export function loginPage({ csrfToken, error }) {
     <form id="login-form" autocomplete="on">
       <label class="field"><span class="field__label">用户名</span><input class="input" type="text" name="username" autocomplete="username" required /></label>
       <label class="field"><span class="field__label">密码</span><input class="input" type="password" name="password" autocomplete="current-password" required /></label>
+      <label class="field field--inline login-remember"><input type="checkbox" name="remember" checked /><span class="field__label">30 分钟内记住登录状态（免重复输入密码）</span></label>
       <button class="btn btn--primary btn--block" type="submit">登录</button>
     </form>
   </div>
@@ -338,7 +367,7 @@ export function buildPage({ user, boot, status, releases, backupConfig }) {
 
 // ============ 动态模块管理页面 ============
 
-// —— 页面内容（主页 hero + 关于页 + 页脚合并编辑） ——
+// —— 页面文案（主页 hero + 关于页 + 页脚合并编辑） ——
 export function siteContentPage({ user, boot, profile }) {
   const hero = profile.hero;
   const about = profile.about;
@@ -468,8 +497,8 @@ export function projectsPage({ user, boot, projects }) {
   return layout({ title: '项目', active: 'projects', user, boot: { ...boot, projects }, content });
 }
 
-// —— 网址导航管理 ——
-export function navLinksPage({ user, boot, nav }) {
+// —— 导航 · 友链（原「网址导航」「友链」两页合并） ——
+export function linksPage({ user, boot, nav, friends }) {
   const cats = nav.categories
     .map(
       (cat, ci) => `<div class="navcat" data-cat-index="${ci}">
@@ -494,20 +523,6 @@ export function navLinksPage({ user, boot, nav }) {
     )
     .join('\n');
 
-  const content = `
-    <header class="page__head page__head--row">
-      <div><h1>网址导航</h1><p>前台「导航」页的分类与网址。保存后到「构建发布」上线（构建后生效）。</p></div>
-      <div class="actions">
-        <button type="button" class="btn" id="nav-cat-add">+ 添加分类</button>
-        <button type="button" class="btn btn--primary" id="nav-save">保存</button>
-      </div>
-    </header>
-    <div id="nav-cats">${cats || '<p class="empty">还没有分类，点「添加分类」开始。</p>'}</div>`;
-  return layout({ title: '网址导航', active: 'nav-links', user, boot, content });
-}
-
-// —— 友链管理 ——
-export function friendsPage({ user, boot, friends }) {
   const badge = { approved: '<span class="badge badge--pub">已通过</span>', pending: '<span class="badge badge--draft">待审核</span>', rejected: '<span class="badge badge--danger">已拒绝</span>' };
   const rows = friends.items
     .slice()
@@ -535,17 +550,27 @@ export function friendsPage({ user, boot, friends }) {
 
   const content = `
     <header class="page__head page__head--row">
-      <div><h1>友链</h1><p>访客在前台「友链」页提交申请后进入待审核队列，通过后即刻展示。${pendingCount ? `当前有 <strong>${pendingCount}</strong> 条待审。` : ''}</p></div>
-      <button type="button" class="btn btn--primary" id="friend-new">手动添加</button>
+      <div><h1>导航 · 友链</h1><p>前台「导航」页的分类网址与「友链」页的交换友链在此管理。导航保存后到「构建发布」上线；友链审核通过后即刻展示。${pendingCount ? `当前有 <strong>${pendingCount}</strong> 条友链待审。` : ''}</p></div>
+      <div class="actions">
+        <button type="button" class="btn" id="friend-new">手动添加友链</button>
+        <button type="button" class="btn btn--primary" id="nav-save">保存导航</button>
+      </div>
     </header>
 
     <section class="card">
-      <h2 class="card__title">申请须知（展示在前台申请表单上方）</h2>
+      <h2 class="card__title">网址导航</h2>
+      <div id="nav-cats">${cats || '<p class="empty">还没有分类，点「添加分类」开始。</p>'}</div>
+      <div class="actions"><button type="button" class="btn btn--sm" id="nav-cat-add">+ 添加分类</button></div>
+    </section>
+
+    <section class="card">
+      <h2 class="card__title">申请须知（展示在前台友链申请表单上方）</h2>
       <textarea class="input" id="friend-notice" rows="3">${esc(friends.notice)}</textarea>
       <div class="actions"><button type="button" class="btn" id="friend-notice-save">保存须知</button></div>
     </section>
 
     <div class="card">
+      <h2 class="card__title">友链列表</h2>
       <table class="table">
         <thead><tr><th>站点</th><th>链接</th><th>状态</th><th>提交时间</th><th></th></tr></thead>
         <tbody>${rows || '<tr><td colspan="5" class="empty">暂无友链。</td></tr>'}</tbody>
@@ -569,7 +594,7 @@ export function friendsPage({ user, boot, friends }) {
         <button type="button" class="btn" id="friend-cancel">收起</button>
       </div>
     </section>`;
-  return layout({ title: '友链', active: 'friends', user, boot, content });
+  return layout({ title: '导航 · 友链', active: 'links', user, boot, content });
 }
 
 // —— 音乐管理 ——
@@ -761,24 +786,26 @@ export function commentsPage({ user, boot, items, counts, filter = {} }) {
   return layout({ title: '评论', active: 'comments', user, boot: { ...boot, comments: items }, content });
 }
 
-// —— 访问统计 ——
-export function statsPage({ user, boot, stats }) {
+// —— 站点数据（开站日期 + 访客数据 + 访问统计，原「访问统计」页并入） ——
+export function siteStatsPage({ user, boot, meta, preview, stats }) {
+  const uptime = formatUptime(meta.since);
   const cards = [
-    { label: '总访问量', value: stats.total },
-    { label: '今日访问', value: stats.today },
-    { label: '昨日访问', value: stats.yesterday },
-    { label: '近 7 天', value: stats.week },
+    { label: '运行时间', value: uptime || '未设置开站日期', text: true },
+    { label: '总文章量', value: preview.posts },
+    { label: '总评论量', value: preview.comments },
+    { label: '总访问量', value: preview.totalViews },
+    { label: '今日访问', value: preview.todayViews },
   ]
-    .map((c) => `<div class="stat"><span class="stat__value">${esc(c.value)}</span><span class="stat__label">${esc(c.label)}</span></div>`)
+    .map((c) => `<div class="stat"><span class="stat__value${c.text ? ' stat__value--text' : ''}">${esc(c.value)}</span><span class="stat__label">${esc(c.label)}</span></div>`)
     .join('\n');
 
-  const maxDay = Math.max(1, ...stats.days.map((d) => d.count));
-  const dayBars = stats.days
+  const maxMonth = Math.max(1, ...stats.months.map((m) => m.count));
+  const monthBars = stats.months
     .map(
-      (d) => `<div class="bar-row">
-        <span class="bar-row__label">${esc(d.date.slice(5))}</span>
-        <span class="bar-row__track"><span class="bar-row__fill" style="width:${Math.round((d.count / maxDay) * 100)}%"></span></span>
-        <span class="bar-row__value">${esc(d.count)}</span>
+      (m) => `<div class="bar-row">
+        <span class="bar-row__label">${esc(m.month)}</span>
+        <span class="bar-row__track"><span class="bar-row__fill" style="width:${Math.round((m.count / maxMonth) * 100)}%"></span></span>
+        <span class="bar-row__value">${esc(m.count)}</span>
       </div>`,
     )
     .join('\n');
@@ -807,15 +834,52 @@ export function statsPage({ user, boot, stats }) {
 
   const content = `
     <header class="page__head page__head--row">
-      <div><h1>访问统计</h1><p>总访问量、各页面访问排行、访客归属地排行。数据来自前台自动打点。</p></div>
+      <div><h1>站点数据</h1><p>前台「网站数据」模块展示的运行时间与数据，以及访问打点的图表与排行。开站日期决定运行时间的起点。</p></div>
       <button type="button" class="btn" onclick="location.reload()">刷新</button>
     </header>
 
-    <div class="stats">${cards}</div>
+    <section class="card">
+      <h2 class="card__title">开站日期</h2>
+      <div class="date-pick">
+        <div class="date-pick__steppers">
+          <div class="date-stepper" data-step-unit="year">
+            <button type="button" class="date-stepper__btn" data-date-step="-1" aria-label="年份减一">−</button>
+            <input class="input date-stepper__input" type="number" id="site-year" min="1970" max="9999" />
+            <span class="date-stepper__unit">年</span>
+            <button type="button" class="date-stepper__btn" data-date-step="1" aria-label="年份加一">＋</button>
+          </div>
+          <div class="date-stepper" data-step-unit="month">
+            <button type="button" class="date-stepper__btn" data-date-step="-1" aria-label="月份减一">−</button>
+            <input class="input date-stepper__input" type="number" id="site-month" min="1" max="12" />
+            <span class="date-stepper__unit">月</span>
+            <button type="button" class="date-stepper__btn" data-date-step="1" aria-label="月份加一">＋</button>
+          </div>
+          <div class="date-stepper" data-step-unit="day">
+            <button type="button" class="date-stepper__btn" data-date-step="-1" aria-label="日期减一">−</button>
+            <input class="input date-stepper__input" type="number" id="site-day" min="1" max="31" />
+            <span class="date-stepper__unit">日</span>
+            <button type="button" class="date-stepper__btn" data-date-step="1" aria-label="日期加一">＋</button>
+          </div>
+        </div>
+        <div class="date-pick__row">
+          <input class="input" type="date" id="site-since" value="${esc(meta.since)}" />
+          <button type="button" class="btn" id="site-since-today">今天</button>
+          <button type="button" class="btn btn--primary" id="site-meta-save">保存开站日期</button>
+        </div>
+      </div>
+      <p>可点日历图标选日期，或用上方 −／＋ 按钮逐日、逐月、逐年增减（两种方式联动）。前台「运行时间」按此日期实时计算，格式为「x年x月x天」；留空则不展示运行时间。保存后前台即时生效，无需构建发布。</p>
+    </section>
 
     <section class="card">
-      <h2 class="card__title">近 30 天每日访问</h2>
-      ${dayBars || '<p class="empty">暂无数据。</p>'}
+      <h2 class="card__title">访客看到的数据</h2>
+      <div class="stats">${cards}</div>
+      <span class="field__hint">总文章量只计已发布的文章；总评论量含全部评论与回复；今日访问按北京时间 00:00 起算。</span>
+    </section>
+
+    <section class="card">
+      <h2 class="card__title">近一年 · 每月访问</h2>
+      ${monthBars || '<p class="empty">暂无数据。</p>'}
+      <span class="field__hint">逐日数据保留最近 400 天，超出范围的历史不计入。</span>
     </section>
 
     <section class="card">
@@ -834,5 +898,25 @@ export function statsPage({ user, boot, stats }) {
       </table>
       <span class="field__hint">归属地由 IP 解析（不保存原始 IP），解析失败记为「未知」。</span>
     </section>`;
-  return layout({ title: '访问统计', active: 'stats', user, boot, content });
+  return layout({ title: '站点数据', active: 'site-stats', user, boot, content });
 }
+
+// 运行时间格式化：与 src/lib/uptime.ts 同一算法，按日历借位计算「x年x月x天」。
+function formatUptime(since) {
+  const start = new Date(`${since}T00:00:00`);
+  if (!since || Number.isNaN(start.getTime()) || start.getTime() > Date.now()) return '';
+  const now = new Date();
+  let y = now.getFullYear() - start.getFullYear();
+  let m = now.getMonth() - start.getMonth();
+  let d = now.getDate() - start.getDate();
+  if (d < 0) {
+    m -= 1;
+    d += new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+  }
+  if (m < 0) {
+    y -= 1;
+    m += 12;
+  }
+  return `${y}年${m}月${d}天`;
+}
+
