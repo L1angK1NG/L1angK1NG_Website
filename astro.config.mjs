@@ -17,6 +17,8 @@ export default defineConfig({
   site: SITE_URL,
   markdown: {
     remarkPlugins: [remarkLegacyShortcodes],
+    // rehypeImgAttrs：图片加载加固（lazy/decoding/防盗链），并把独占一段的
+    // 图片升级为 <figure>——Markdown 图片的 "标题" 位渲染为居中图注。
     rehypePlugins: [rehypeLegacyShortcodes, rehypeImgAttrs],
   },
   vite: {

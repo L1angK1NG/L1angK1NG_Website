@@ -23,7 +23,7 @@ const DEFAULT_ALLOWED_TAGS = new Set([
   'UL',
 ]);
 
-// 后台预览还要展示标题、分隔线、表格等 Markdown 常见输出。
+// 后台预览还要展示标题、分隔线、表格、图片面板等 Markdown 常见输出。
 const EXTENDED_TAGS = new Set([
   'H1',
   'H2',
@@ -46,6 +46,8 @@ const EXTENDED_TAGS = new Set([
   'CITE',
   'KBD',
   'ABBR',
+  'FIGURE', // 文中插图（尺寸/对齐/图注）
+  'FIGCAPTION',
 ]);
 
 export const safeUrl = (value, protocols = ['http:', 'https:']) => {
@@ -85,7 +87,9 @@ export function sanitizeHtml(html, { extended = false } = {}) {
         const value = attr.value;
         const isLink = child.tagName === 'A' && ['href', 'title'].includes(name);
         const isImage = child.tagName === 'IMG' && ['src', 'alt', 'title'].includes(name);
-        const isCode = ['CODE', 'PRE', 'SPAN'].includes(child.tagName) && name === 'class';
+        // class 只对纯样式/代码容器放行（figure 的 class 编码尺寸与对齐），
+        // class 本身不可执行，样式规则都来自站点自身样式表。
+        const isClass = ['CODE', 'PRE', 'SPAN', 'FIGURE'].includes(child.tagName) && name === 'class';
         // 任务列表复选框只保留 type=checkbox 与勾选状态
         const isCheckbox =
           child.tagName === 'INPUT' &&
@@ -93,7 +97,7 @@ export function sanitizeHtml(html, { extended = false } = {}) {
 
         if (
           name.startsWith('on') ||
-          (!isLink && !isImage && !isCode && !isCheckbox) ||
+          (!isLink && !isImage && !isClass && !isCheckbox) ||
           (name === 'href' && !safeUrl(value, ['http:', 'https:', 'mailto:'])) ||
           (name === 'src' && !safeUrl(value))
         ) {

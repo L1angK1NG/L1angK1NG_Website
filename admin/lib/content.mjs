@@ -8,8 +8,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { ROOT } from './env.mjs';
+import { DATA_DIR } from './store.mjs';
 
 const CONTENT_ROOT = path.join(ROOT, 'src', 'content');
+// 回收站：删除的内容移入 data/trash/（个人数据，不进 git、不被 Astro 构建扫到），
+// 文件名记录删除时间与原路径，可恢复或彻底删除。
+const TRASH_ROOT = path.join(DATA_DIR, 'trash');
 
 export const COLLECTIONS = {
   posts: {
@@ -39,7 +43,11 @@ const toDateInput = (value) => {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
   const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  // 保留分钟精度（编辑器的日期时间选择器可精确到分）；00:00 时只存日期，
+  // 与既有内容格式保持兼容。
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return time === '00:00' ? date : `${date} ${time}`;
 };
 
 const isEmpty = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
@@ -257,7 +265,89 @@ export function saveEntry(collectionName, id, input, body, originalId) {
 export function deleteEntry(collectionName, id) {
   const { filePath } = resolveFile(collectionName, id);
   if (!fs.existsSync(filePath)) throw new Error('内容不存在');
-  fs.unlinkSync(filePath);
+  // 移入回收站而不是直接删文件：文件名形如 <删除时间戳>__<encodeURIComponent(原路径)>.md，
+  // 编码保证斜杠等字符不会产生子目录，恢复时可精确还原原路径。
+  const trashDir = path.join(TRASH_ROOT, collectionName);
+  fs.mkdirSync(trashDir, { recursive: true });
+  const trashName = `${Date.now()}__${encodeURIComponent(id)}.md`;
+  const trashPath = path.join(trashDir, trashName);
+  try {
+    fs.renameSync(filePath, trashPath);
+  } catch {
+    // 跨磁盘移动失败时退化为复制 + 删除。
+    fs.copyFileSync(filePath, trashPath);
+    fs.unlinkSync(filePath);
+  }
+  return { ok: true, trash: trashName };
+}
+
+// —— 回收站管理 ——
+const trashFileOf = (collectionName, file) => {
+  const name = path.basename(String(file || ''));
+  if (!/^\d+__.+\.md$/.test(name)) throw new Error('回收站条目无效');
+  const full = path.join(TRASH_ROOT, collectionName, name);
+  if (!fs.existsSync(full)) throw new Error('回收站条目不存在');
+  return full;
+};
+
+export function listTrash(collectionName) {
+  if (!COLLECTIONS[collectionName]) throw new Error('未知的内容类型');
+  const dir = path.join(TRASH_ROOT, collectionName);
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isFile() && /^\d+__.+\.md$/.test(e.name))
+    .map((e) => {
+      const ts = Number(e.name.split('__')[0]) || 0;
+      let id = '';
+      let title = '';
+      try {
+        id = decodeURIComponent(e.name.slice(e.name.indexOf('__') + 2, -3));
+        title = matter(fs.readFileSync(path.join(dir, e.name), 'utf8')).data?.title || '';
+      } catch {
+        /* 损坏条目按无标题展示 */
+      }
+      return { file: e.name, id, title, deletedAt: ts };
+    })
+    .sort((a, b) => b.deletedAt - a.deletedAt);
+}
+
+export function trashCount(collectionName) {
+  return listTrash(collectionName).length;
+}
+
+export function restoreTrash(collectionName, file) {
+  const full = trashFileOf(collectionName, file);
+  const id = decodeURIComponent(path.basename(full).slice(path.basename(full).indexOf('__') + 2, -3));
+  const target = resolveFile(collectionName, id);
+  if (fs.existsSync(target.filePath)) {
+    throw new Error(`原路径 ${id} 已被占用，请先处理同名内容再恢复`);
+  }
+  fs.mkdirSync(path.dirname(target.filePath), { recursive: true });
+  try {
+    fs.renameSync(full, target.filePath);
+  } catch {
+    // 数据目录与内容目录不同盘（如 BLOG_DATA_DIR 在别的磁盘）时 rename 会
+    // 报 EXDEV，退化为复制 + 删除。
+    fs.copyFileSync(full, target.filePath);
+    fs.unlinkSync(full);
+  }
+  return { ok: true, id };
+}
+
+export function purgeTrash(collectionName, file) {
+  const full = trashFileOf(collectionName, file);
+  fs.unlinkSync(full);
+  return { ok: true };
+}
+
+export function purgeAllTrash(collectionName) {
+  if (!COLLECTIONS[collectionName]) throw new Error('未知的内容类型');
+  const dir = path.join(TRASH_ROOT, collectionName);
+  if (!fs.existsSync(dir)) return { ok: true, removed: 0 };
+  const files = fs.readdirSync(dir).filter((n) => /^\d+__.+\.md$/.test(n));
+  for (const n of files) fs.unlinkSync(path.join(dir, n));
+  return { ok: true, removed: files.length };
 }
 
 // 为新条目生成 slug 建议：以日期为前缀、接近 ASCII 风格的路径。用户可以在

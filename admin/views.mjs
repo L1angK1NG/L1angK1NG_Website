@@ -29,12 +29,26 @@ const FIELD_META = {
   draft: { label: '存为草稿', type: 'bool' },
 };
 
-const FIELD_ORDER = {
-  posts: ['title', 'date', 'updated', 'categories', 'tags', 'cover', 'sticky', 'draft', 'description', 'keywords', 'ai', 'main_color', 'author'],
-  notes: ['date', 'title', 'mood', 'tags', 'draft'],
+// 编辑器的字段布局：标题进大标题区、常用信息进标题下的元信息行、
+// 其余进「文章设置」抽屉。保存统一按 [data-field] 收集，位置不影响存取。
+const FIELD_PLACEMENT = {
+  posts: {
+    hero: ['title'],
+    meta: ['date', 'updated', 'categories', 'tags'],
+    settings: ['cover', 'sticky', 'draft', 'description', 'keywords', 'ai', 'main_color', 'author'],
+  },
+  notes: {
+    hero: ['title'],
+    meta: ['date', 'mood', 'tags'],
+    settings: ['draft'],
+  },
 };
 
 const asArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
+
+// 静态资源版本号：改 admin.css / admin.js 后递增即可让浏览器绕开 1 小时缓存，
+// 避免「改了样式但看到的还是旧文件」的排查成本（后台资源带 maxAge 缓存）。
+export const ASSET_V = '1918';
 
 function renderField(name, value) {
   const meta = FIELD_META[name];
@@ -44,7 +58,13 @@ function renderField(name, value) {
     case 'textarea':
       return `<label class="field"><span class="field__label">${esc(meta.label)}</span><textarea class="input" data-field="${esc(name)}" rows="2" placeholder="${esc(meta.placeholder || '')}">${esc(val)}</textarea></label>`;
     case 'date':
-      return `<label class="field"><span class="field__label">${esc(meta.label)}</span><input class="input" type="date" data-field="${esc(name)}" value="${esc(val)}" /></label>`;
+      // 自定义日期时间选择器（picker.js）：日历 + 时分步进，替代原生日期控件。
+      return `<label class="field"><span class="field__label">${esc(meta.label)}</span>
+        <div class="picker-wrap">
+          <input class="input picker-input" type="text" data-field="${esc(name)}" data-picker="datetime" value="${esc(val)}" placeholder="选择日期与时间" readonly />
+          <span class="picker-wrap__icon" aria-hidden="true">📅</span>
+        </div>
+      </label>`;
     case 'number':
       return `<label class="field"><span class="field__label">${esc(meta.label)}</span><input class="input" type="number" data-field="${esc(name)}" value="${esc(val)}" placeholder="${esc(meta.placeholder || '')}" /></label>`;
     case 'tags':
@@ -117,7 +137,9 @@ export function layout({ title, active, user, boot, content }) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
   <title>${esc(title)} · 博客后台</title>
-  <link rel="stylesheet" href="/admin-assets/admin.css" />
+  <link rel="stylesheet" href="/admin-assets/admin.css?v=${ASSET_V}" />
+  <!-- 提前发现模块脚本（解析 body 前就开始下载，缩短登录后首屏等待） -->
+  <link rel="modulepreload" href="/admin-assets/admin.js?v=${ASSET_V}" />
 </head>
 <body>
   <div class="app">
@@ -137,7 +159,7 @@ export function layout({ title, active, user, boot, content }) {
   </div>
   <div class="toast" id="toast" hidden></div>
   <script>window.__BOOT__ = ${JSON.stringify(boot || {}).replace(/</g, '\\u003c')}</script>
-  <script type="module" src="/admin-assets/admin.js"></script>
+  <script type="module" src="/admin-assets/admin.js?v=${ASSET_V}"></script>
 </body>
 </html>`;
 }
@@ -150,7 +172,7 @@ export function loginPage({ csrfToken, error }) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
   <title>登录 · 博客后台</title>
-  <link rel="stylesheet" href="/admin-assets/admin.css" />
+  <link rel="stylesheet" href="/admin-assets/admin.css?v=${ASSET_V}" />
 </head>
 <body class="login-body">
   <div class="login-card">
@@ -168,45 +190,183 @@ export function loginPage({ csrfToken, error }) {
     </form>
   </div>
   <script>window.__BOOT__ = { "csrfToken": ${JSON.stringify(csrfToken).replace(/</g, '\\u003c')} };</script>
-  <script type="module" src="/admin-assets/admin.js"></script>
+  <script type="module" src="/admin-assets/admin.js?v=${ASSET_V}"></script>
 </body>
 </html>`;
 }
 
-export function dashboardPage({ user, boot, stats, build }) {
-  const cards = [
-    { label: '文章', value: stats.posts, href: '/admin/posts' },
-    { label: '随笔', value: stats.notes, href: '/admin/notes' },
-    { label: '草稿', value: stats.drafts, href: '/admin/posts' },
-    { label: '媒体文件', value: stats.media, href: '/admin/media' },
-  ]
-    .map(
-      (c) => `<a class="stat" href="${c.href}"><span class="stat__value">${esc(c.value)}</span><span class="stat__label">${esc(c.label)}</span></a>`,
-    )
-    .join('\n');
-
-  const buildState = build?.status || '尚未构建';
-  const buildTime = build?.finishedAt ? new Date(build.finishedAt).toLocaleString('zh-CN') : '—';
-
+// —— 仪表盘 ——
+// 页面只渲染分区骨架与静态文案，全部数值/图表/排行由 admin/public/dashboard.js
+// 拿 window.__BOOT__.dash（或刷新接口 /api/manage/dashboard）填充——首屏一次
+// 请求出齐数据，后续手动/自动刷新只更新数字不重排布局。
+export function dashboardPage({ user, boot }) {
   const content = `
-    <header class="page__head"><h1>仪表盘</h1><p>内容以 Markdown 保存，发布即触发前台构建。</p></header>
-    <div class="stats">${cards}</div>
-    <section class="card">
-      <h2 class="card__title">发布状态</h2>
-      <div class="kv">
-        <div><span>最近构建</span><strong>${esc(buildState)}</strong></div>
-        <div><span>构建时间</span><strong>${esc(buildTime)}</strong></div>
-        <div><span>当前版本</span><strong>${esc(build?.release || boot?.currentRelease || '—')}</strong></div>
-      </div>
-      <div class="actions">
-        <a class="btn btn--primary" href="/admin/posts/new">写文章</a>
-        <a class="btn" href="/admin/build">去发布</a>
-      </div>
-    </section>`;
+    <div id="dash-root">
+      <header class="page__head page__head--row">
+        <div><h1>仪表盘</h1><p>博客运营数据总览：访问、内容与服务器状态，自动刷新不打断操作。</p></div>
+        <div class="dash-controls">
+          <span class="dash-updated" id="dash-updated">数据加载中…</span>
+          <select class="input dash-select" id="dash-interval" title="自动刷新间隔">
+            <option value="0">自动刷新：关</option>
+            <option value="15">每 15 秒刷新</option>
+            <option value="30">每 30 秒刷新</option>
+            <option value="60">每 1 分钟刷新</option>
+            <option value="300">每 5 分钟刷新</option>
+          </select>
+          <button type="button" class="btn btn--primary" id="dash-refresh">立即刷新</button>
+        </div>
+      </header>
+
+      <div class="dash-alerts" id="dash-alerts" hidden></div>
+
+      <section class="card dash-overview">
+        <div class="dash-overview__build">
+          <h2 class="card__title">发布状态</h2>
+          <div class="kv kv--inline">
+            <div><span>最近构建</span><strong id="dash-build-state">—</strong></div>
+            <div><span>构建时间</span><strong id="dash-build-time">—</strong></div>
+            <div><span>当前版本</span><strong id="dash-build-release">—</strong></div>
+          </div>
+        </div>
+        <div class="dash-overview__actions">
+          <a class="btn btn--primary" href="/admin/posts/new">写文章</a>
+          <a class="btn" href="/admin/build">去发布</a>
+          <a class="btn" href="/admin/comments">看评论</a>
+          <a class="btn" href="/" target="_blank" rel="noopener">看网站</a>
+        </div>
+      </section>
+
+      <!-- ================= 博客访问 ================= -->
+      <section class="dash-section">
+        <h2 class="dash-section__title"><span class="dash-section__mark">◈</span>博客访问</h2>
+        <div class="stats" id="dash-visit-stats"></div>
+
+        <section class="card">
+          <div class="card__head">
+            <h2 class="card__title">访问趋势</h2>
+            <div class="seg" id="dash-trend-range">
+              <button type="button" class="seg__btn" data-range="7">近 7 天</button>
+              <button type="button" class="seg__btn seg__btn--active" data-range="30">近 30 天</button>
+              <button type="button" class="seg__btn" data-range="12m">近 12 月</button>
+            </div>
+          </div>
+          <div class="chart chart--trend" id="dash-trend"></div>
+          <span class="field__hint">悬停查看每个时间点的访问量与访客数；切换范围查看不同时间粒度。</span>
+        </section>
+
+        <div class="dash-grid">
+          <section class="card">
+            <div class="card__head">
+              <h2 class="card__title">访问来源</h2>
+              <div class="seg seg--sm" data-dash-dist="sources">
+                <button type="button" class="seg__btn" data-range="d7">7 天</button>
+                <button type="button" class="seg__btn" data-range="d30">30 天</button>
+                <button type="button" class="seg__btn seg__btn--active" data-range="all">全部</button>
+              </div>
+            </div>
+            <div class="donut-wrap">
+              <div class="chart chart--donut" id="dash-source"></div>
+              <ul class="donut-legend" id="dash-source-legend"></ul>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__head">
+              <h2 class="card__title">访问设备</h2>
+              <div class="seg seg--sm" data-dash-dist="devices">
+                <button type="button" class="seg__btn" data-range="d7">7 天</button>
+                <button type="button" class="seg__btn" data-range="d30">30 天</button>
+                <button type="button" class="seg__btn seg__btn--active" data-range="all">全部</button>
+              </div>
+            </div>
+            <div class="donut-wrap">
+              <div class="chart chart--donut" id="dash-device"></div>
+              <ul class="donut-legend" id="dash-device-legend"></ul>
+            </div>
+          </section>
+
+          <section class="card card--w8">
+            <h2 class="card__title">页面访问排行</h2>
+            <div class="rank" id="dash-top-paths"></div>
+          </section>
+
+          <section class="card card--w4">
+            <h2 class="card__title">访客地域分布</h2>
+            <div class="rank" id="dash-regions"></div>
+            <span class="field__hint">归属地由 IP 解析（不保存原始 IP），解析失败记为「未知」。</span>
+          </section>
+        </div>
+      </section>
+
+      <!-- ================= 文章数据 ================= -->
+      <section class="dash-section">
+        <h2 class="dash-section__title"><span class="dash-section__mark">✎</span>文章数据</h2>
+        <div class="stats" id="dash-content-stats"></div>
+
+        <div class="dash-grid">
+          <section class="card card--w8">
+            <h2 class="card__title">文章状态占比</h2>
+            <div class="stack-bar" id="dash-post-mix"></div>
+            <div class="rank" id="dash-category"></div>
+            <span class="field__hint">分类分布只统计已发布的文章。</span>
+          </section>
+
+          <section class="card card--w4">
+            <h2 class="card__title">标签云</h2>
+            <div class="tag-cloud" id="dash-tags"></div>
+            <span class="field__hint">字号越大表示使用该标签的文章越多。</span>
+          </section>
+
+          <section class="card">
+            <h2 class="card__title">最新发布</h2>
+            <ul class="mini-list" id="dash-latest"></ul>
+          </section>
+
+          <section class="card">
+            <h2 class="card__title">阅读量 TOP5</h2>
+            <div class="rank" id="dash-top-read"></div>
+          </section>
+
+          <section class="card">
+            <div class="card__head">
+              <h2 class="card__title">评论</h2>
+              <a class="btn btn--sm" href="/admin/comments">管理评论</a>
+            </div>
+            <div class="mini-stats" id="dash-comment-stats"></div>
+            <div class="chart chart--mini" id="dash-comment-trend"></div>
+            <span class="field__hint">近 30 天每日新增评论，悬停查看当天数量。</span>
+          </section>
+
+          <section class="card">
+            <h2 class="card__title">最近评论</h2>
+            <ul class="mini-list" id="dash-comment-recent"></ul>
+          </section>
+        </div>
+      </section>
+
+      <!-- ================= 服务器监控 ================= -->
+      <section class="dash-section">
+        <h2 class="dash-section__title"><span class="dash-section__mark">◎</span>服务器监控</h2>
+        <div class="stats" id="dash-server-stats"></div>
+
+        <div class="dash-grid">
+          <section class="card">
+            <h2 class="card__title">资源使用</h2>
+            <div class="gauges" id="dash-server-gauges"></div>
+          </section>
+
+          <section class="card">
+            <h2 class="card__title">网络与进程</h2>
+            <div class="kv" id="dash-server-kv"></div>
+            <span class="field__hint">延迟为后台服务自身的响应能力（事件循环延迟）；网络速率为网卡实时吞吐，依赖系统接口支持。</span>
+          </section>
+        </div>
+      </section>
+    </div>`;
   return layout({ title: '仪表盘', active: 'dashboard', user, boot, content });
 }
 
-export function listPage({ user, boot, collection, entries }) {
+export function listPage({ user, boot, collection, entries, trash = [] }) {
   const col = COLLECTIONS[collection];
   const rows = entries
     .map((e) => {
@@ -226,9 +386,22 @@ export function listPage({ user, boot, collection, entries }) {
     })
     .join('\n');
 
+  const trashRows = trash
+    .map(
+      (t) => `<tr>
+        <td class="cell-title">${esc(t.title || '（无标题）')}<div class="cell-sub"><code>${esc(t.id)}</code></div></td>
+        <td>${t.deletedAt ? new Date(t.deletedAt).toLocaleString('zh-CN') : '—'}</td>
+        <td class="cell-actions">
+          <button type="button" class="btn btn--sm" data-trash-restore="${esc(t.file)}" data-collection="${collection}">恢复</button>
+          <button type="button" class="btn btn--sm btn--danger" data-trash-purge="${esc(t.file)}" data-collection="${collection}">彻底删除</button>
+        </td>
+      </tr>`,
+    )
+    .join('\n');
+
   const content = `
     <header class="page__head page__head--row">
-      <div><h1>${esc(col.label)}</h1><p>共 ${entries.length} 篇${collection === 'posts' ? '，URL 由路径决定' : ''}。</p></div>
+      <div><h1>${esc(col.label)}</h1><p>共 ${entries.length} 篇${collection === 'posts' ? '，URL 由路径决定' : ''}。删除的内容会移入回收站，可随时恢复。</p></div>
       <a class="btn btn--primary" href="/admin/${collection}/new">新建${esc(col.label)}</a>
     </header>
     <div class="card">
@@ -236,52 +409,138 @@ export function listPage({ user, boot, collection, entries }) {
         <thead><tr><th>标题</th><th>状态</th><th>日期</th><th>路径</th><th></th></tr></thead>
         <tbody>${rows || `<tr><td colspan="5" class="empty">还没有内容，点击右上角新建。</td></tr>`}</tbody>
       </table>
-    </div>`;
+    </div>
+    <section class="card" id="trash-card" ${trash.length ? '' : 'hidden'}>
+      <div class="card__head">
+        <h2 class="card__title">回收站（${trash.length}）</h2>
+        <button type="button" class="btn btn--sm btn--danger" id="trash-purge-all" data-collection="${collection}">清空回收站</button>
+      </div>
+      <table class="table">
+        <thead><tr><th>标题</th><th>删除时间</th><th></th></tr></thead>
+        <tbody id="trash-rows">${trashRows || `<tr><td colspan="3" class="empty">回收站为空。</td></tr>`}</tbody>
+      </table>
+      <span class="field__hint">恢复时若原路径已被新内容占用会提示失败；彻底删除后无法找回。</span>
+    </section>`;
   return layout({ title: col.label, active: collection, user, boot, content });
 }
 
+// —— 编辑器（推倒重做：写作优先版式） ——
+// 顶栏（返回 / 写作·预览 / 文章设置 / 保存）+ 写作画布（大标题 → 元信息行 →
+// 工具栏 → 正文）+ 右侧设置抽屉 + 图片选择弹窗。图片插入两条路径：
+// 弹窗（媒体库选图 / 上传，配尺寸·对齐·图注）与拖拽/粘贴正文即时插入。
 export function editorPage({ user, boot, collection, entry, isNew }) {
   const col = COLLECTIONS[collection];
   const data = entry?.data || {};
-  const fields = FIELD_ORDER[collection].map((name) => renderField(name, data[name])).join('\n');
   const body = entry?.body || '';
   const id = entry?.id || '';
-
   const urlPrefix = collection === 'posts' ? '/posts/' : '/notes/';
-  const title = isNew ? `新建${col.label}` : `编辑${col.label}`;
+  const pageTitle = isNew ? `新建${col.label}` : `编辑${col.label}`;
+  const place = FIELD_PLACEMENT[collection];
+
+  const metaFields = place.meta.map((name) => renderField(name, data[name])).join('\n');
+  const settingsFields = place.settings.map((name) => renderField(name, data[name])).join('\n');
 
   const content = `
-    <header class="page__head page__head--row">
-      <div><h1>${esc(title)}</h1><p>${isNew ? '填写内容后保存，再到「构建发布」上线。' : '保存只写入文件，不会立即上线。'}</p></div>
-      <div class="actions">
-        <a class="btn" href="/admin/${collection}">返回列表</a>
-        <button type="button" class="btn btn--primary" id="save-btn">保存</button>
+    <header class="editor__topbar">
+      <a class="btn btn--ghost btn--sm" href="/admin/${collection}">← 返回</a>
+      <span class="editor__topbar-label">${esc(pageTitle)}</span>
+      <div class="editor__topbar-actions">
+        <div class="tabs">
+          <button type="button" class="tab tab--active" data-tab="write">写作</button>
+          <button type="button" class="tab" data-tab="preview">预览</button>
+        </div>
+        <button type="button" class="btn btn--sm btn--primary" id="save-btn">保存</button>
       </div>
     </header>
 
     <div class="editor">
-      <section class="card editor__form">
+      <div class="editor__canvas">
+        <input class="editor__title" type="text" data-field="title" value="${esc(data.title || '')}"
+          placeholder="${collection === 'posts' ? '起个标题…' : '随笔标题（可留空）'}" />
+        <div class="editor__meta">${metaFields}</div>
+
+        <div class="editor__toolbar">
+          <button type="button" class="tool-btn tool-btn--image" id="img-insert-btn" title="插入图片">插图</button>
+          <span class="tool-sep"></span>
+          <button type="button" class="tool-btn" data-fmt="bold" title="加粗">B</button>
+          <button type="button" class="tool-btn tool-btn--italic" data-fmt="italic" title="斜体">I</button>
+          <button type="button" class="tool-btn" data-fmt="code" title="行内代码">&lt;/&gt;</button>
+          <button type="button" class="tool-btn" data-fmt="link" title="链接">链</button>
+          <button type="button" class="tool-btn" data-fmt="quote" title="引用">引</button>
+          <button type="button" class="tool-btn" data-fmt="list" title="列表">列</button>
+          <button type="button" class="tool-btn" data-fmt="heading" title="小标题">H</button>
+          <span class="editor__count" id="editor-count"></span>
+        </div>
+
+        <textarea id="body" class="body-area" spellcheck="false" placeholder="从这里开始写正文（支持 Markdown）…&#10;把图片拖进或粘贴到此处即可直接插图。&#10;Ctrl+Z 撤销、Ctrl+Y 重做。">${esc(body)}</textarea>
+        <div id="preview" class="preview prose" hidden></div>
+      </div>
+
+      <aside class="editor__side">
+        <h2 class="editor__side-title">文章设置</h2>
         <label class="field">
           <span class="field__label">路径 / slug</span>
           <input class="input" type="text" id="slug" value="${esc(id)}" placeholder="如 技术/my-post 或 20260928-hello" />
           <span class="field__hint">保存后 URL 为 <code id="url-preview">${esc(urlPrefix)}${esc(id)}/</code>。支持中文、字母、数字、点和连字符（用 / 分层），引号、空格等字符会自动替换为连字符。</span>
         </label>
-        ${fields}
-      </section>
+        ${settingsFields}
+        <p class="field__hint">${isNew ? '保存后到「构建发布」上线。' : '保存只写入文件，不会立即上线。'}</p>
+      </aside>
+    </div>
 
-      <section class="card editor__body">
-        <div class="editor__body-head">
-          <span class="field__label">正文（Markdown）</span>
-          <div class="tabs">
-            <button type="button" class="tab tab--active" data-tab="write">写作</button>
-            <button type="button" class="tab" data-tab="preview">预览</button>
+    <div class="modal" id="img-modal" hidden>
+      <div class="modal__backdrop" data-img-close></div>
+      <div class="modal__card" role="dialog" aria-modal="true" aria-label="插入图片">
+        <div class="modal__head">
+          <h2>插入图片</h2>
+          <button type="button" class="modal__close" data-img-close aria-label="关闭">×</button>
+        </div>
+        <div class="modal__body">
+          <div class="img-picker">
+            <div class="img-picker__upload" id="img-drop">
+              <p>把图片拖到这里，或</p>
+              <button type="button" class="btn btn--sm" id="img-pick">选择图片上传</button>
+              <span class="field__hint">JPG / PNG / WebP · ≤ 10MB · 可多选</span>
+            </div>
+            <div class="img-picker__side">
+              <span class="field__label">从媒体库选择</span>
+              <div class="img-gallery" id="img-gallery"></div>
+            </div>
+          </div>
+          <div class="img-options">
+            <div class="img-options__head">
+              <img id="img-thumb" alt="选中图片预览" hidden />
+              <span id="img-selected-name" class="field__hint">尚未选择图片</span>
+            </div>
+            <div class="img-options__row">
+              <span class="field__label">尺寸</span>
+              <div class="chips" data-chip-group="size">
+                <button type="button" class="chip is-active" data-size="33">小</button>
+                <button type="button" class="chip" data-size="50">中</button>
+                <button type="button" class="chip" data-size="75">大</button>
+                <button type="button" class="chip" data-size="100">全宽</button>
+              </div>
+              <span class="field__label">对齐</span>
+              <div class="chips" data-chip-group="align">
+                <button type="button" class="chip" data-align="left">居左</button>
+                <button type="button" class="chip is-active" data-align="center">居中</button>
+                <button type="button" class="chip" data-align="right">居右</button>
+              </div>
+            </div>
+            <label class="field">
+              <span class="field__label">图注（可选，显示在图片下方）</span>
+              <input class="input" id="img-caption" placeholder="一句话说明这张图" />
+            </label>
           </div>
         </div>
-        <textarea id="body" class="body-area" spellcheck="false" placeholder="在这里写 Markdown 正文…">${esc(body)}</textarea>
-        <div id="preview" class="preview prose" hidden></div>
-      </section>
+        <div class="modal__foot">
+          <button type="button" class="btn" data-img-close>取消</button>
+          <button type="button" class="btn btn--primary" id="img-insert" disabled>插入到正文</button>
+        </div>
+      </div>
+      <input type="file" id="img-file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple hidden />
     </div>`;
-  return layout({ title, active: collection, user, boot, content });
+  return layout({ title: pageTitle, active: collection, user, boot, content });
 }
 
 export function mediaPage({ user, boot, files }) {
@@ -721,8 +980,18 @@ export function announcementsPage({ user, boot, items }) {
       </div>
       <label class="field"><span class="field__label">内容 *</span><textarea class="input" id="an-content" rows="3"></textarea></label>
       <div class="field__row">
-        <label class="field" style="flex:1"><span class="field__label">生效时间（选填）</span><input class="input" type="datetime-local" id="an-start" /></label>
-        <label class="field" style="flex:1"><span class="field__label">失效时间（选填）</span><input class="input" type="datetime-local" id="an-end" /></label>
+        <label class="field" style="flex:1"><span class="field__label">生效时间（选填）</span>
+          <div class="picker-wrap">
+            <input class="input picker-input" id="an-start" data-picker="datetime" placeholder="选择生效日期与时间" readonly />
+            <span class="picker-wrap__icon" aria-hidden="true">📅</span>
+          </div>
+        </label>
+        <label class="field" style="flex:1"><span class="field__label">失效时间（选填）</span>
+          <div class="picker-wrap">
+            <input class="input picker-input" id="an-end" data-picker="datetime" placeholder="选择失效日期与时间" readonly />
+            <span class="picker-wrap__icon" aria-hidden="true">📅</span>
+          </div>
+        </label>
         <label class="field field--inline" style="align-self:flex-end;margin-bottom:16px"><input type="checkbox" id="an-enabled" checked /><span class="field__label">启用</span></label>
       </div>
       <div class="actions">
@@ -862,7 +1131,10 @@ export function siteStatsPage({ user, boot, meta, preview, stats }) {
           </div>
         </div>
         <div class="date-pick__row">
-          <input class="input" type="date" id="site-since" value="${esc(meta.since)}" />
+          <div class="picker-wrap">
+            <input class="input picker-input" id="site-since" data-picker="date" value="${esc(meta.since)}" placeholder="选择开站日期" readonly />
+            <span class="picker-wrap__icon" aria-hidden="true">📅</span>
+          </div>
           <button type="button" class="btn" id="site-since-today">今天</button>
           <button type="button" class="btn btn--primary" id="site-meta-save">保存开站日期</button>
         </div>

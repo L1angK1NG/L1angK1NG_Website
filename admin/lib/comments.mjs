@@ -7,6 +7,7 @@
 import crypto from 'node:crypto';
 import { marked } from 'marked';
 import { readJSON, updateJSON, newId } from './store.mjs';
+import { dayKeyOf } from './stats.mjs';
 
 const COMMENTS_FILE = 'comments.json';
 const EMPTY = [];
@@ -235,4 +236,48 @@ export function adminCount() {
     visible: all.filter((c) => c.status === 'visible').length,
     hidden: all.filter((c) => c.status === 'hidden').length,
   };
+}
+
+// 仪表盘用的评论趋势：近 30 天逐日、近 12 月逐月的新增评论数（补零），
+// 外加最近几条评论摘要。日界线与访问统计一致（北京时间）。
+export function adminTrend({ daysLimit = 30, monthsLimit = 12, recentLimit = 5 } = {}) {
+  const all = loadAll();
+  const byDay = {};
+  const byMonth = {};
+  for (const c of all) {
+    const day = dayKeyOf(c.created);
+    byDay[day] = (byDay[day] || 0) + 1;
+    const month = day.slice(0, 7);
+    byMonth[month] = (byMonth[month] || 0) + 1;
+  }
+
+  const days = [];
+  for (let i = daysLimit - 1; i >= 0; i--) {
+    const date = dayKeyOf(Date.now() - i * 24 * 60 * 60 * 1000);
+    days.push({ date, count: byDay[date] || 0 });
+  }
+
+  const months = [];
+  const now = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  for (let i = monthsLimit - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    const month = d.toISOString().slice(0, 7);
+    months.push({ month, count: byMonth[month] || 0 });
+  }
+
+  const recent = all
+    .slice()
+    .sort((a, b) => b.created - a.created)
+    .slice(0, recentLimit)
+    .map((c) => ({
+      id: c.id,
+      nick: c.nick,
+      excerpt: String(c.commentMd || '').replace(/\s+/g, ' ').slice(0, 60),
+      url: c.url,
+      created: c.created,
+      status: c.status,
+      master: Boolean(c.master),
+    }));
+
+  return { days, months, recent };
 }

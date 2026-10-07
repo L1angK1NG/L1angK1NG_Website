@@ -55,6 +55,10 @@ for (const heading of tableOfContents) {
 }
 
 const updatedDate = getPostUpdatedDate(post);
+// 「更新于」只在真正有别于发布日期时才展示，避免同一天时的重复信息。
+const showUpdated =
+  Boolean(post.data.updated) &&
+  (!post.data.date || post.data.updated!.getTime() !== post.data.date.getTime());
 const articleSchema = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
@@ -92,8 +96,8 @@ const articleSchema = {
         {post.data.date && (
           <time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time>
         )}
-        {post.data.updated && (
-          <span>更新于 {formatDate(post.data.updated)}</span>
+        {showUpdated && (
+          <span>更新于 {formatDate(post.data.updated!)}</span>
         )}
         <span>{readingMinutes} 分钟阅读</span>
       </div>

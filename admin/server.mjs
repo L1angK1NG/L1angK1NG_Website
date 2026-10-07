@@ -91,6 +91,11 @@ app.all('/api/_', (req, res) => {
     return res.status(400).json({ error: '非法的接口地址' });
   }
   req.url = target;
+  // Express 的 query 中间件只在请求首次进入时解析一次 req.query（此后是普通
+  // 属性，重进中间件栈不会重新解析），因此按新 URL 重新解析查询串——否则
+  // 目标里的查询参数会全部丢失（编辑页 ?path=、上传 ?filename= 等都会拿到空值）。
+  const qIndex = target.indexOf('?');
+  req.query = req.app.get('query parser fn')(qIndex >= 0 ? target.slice(qIndex + 1) : '');
   app.handle(req, res);
 });
 
@@ -229,20 +234,22 @@ const currentBoot = (req) => ({
 });
 
 app.get('/admin', requirePageAuth, wrap(async (req, res) => {
-  const posts = content.listEntries('posts');
-  const notes = content.listEntries('notes');
-  const media = listMedia();
-  const drafts =
-    posts.filter((p) => p.data.draft).length + notes.filter((n) => n.data.draft).length;
-  const status = build.lastBuildStatus();
+  // 仪表盘首屏数据在服务端一次算好放进 boot（访问/内容/评论/服务器/构建），
+  // 浏览器拿到 HTML 直接填卡片；之后的手动/自动刷新走 /api/manage/dashboard。
+  // fast 模式：服务器监控指标取缓存/瞬时值，避免 PowerShell 采样拖慢首屏。
+  const { dashboardData } = await import('./lib/dashboard.mjs');
   res.send(
     views.dashboardPage({
       user: req.session.user,
-      boot: currentBoot(req),
-      stats: { posts: posts.length, notes: notes.length, drafts, media: media.length },
-      build: { ...status, release: build.currentRelease() },
+      boot: { ...currentBoot(req), dash: await dashboardData({ fast: true }) },
     }),
   );
+}));
+
+// 仪表盘刷新接口：与首屏同一份聚合口径（后台登录后可用）。
+app.get('/api/manage/dashboard', requireApiAuth, wrap(async (_req, res) => {
+  const { dashboardData } = await import('./lib/dashboard.mjs');
+  res.json(await dashboardData());
 }));
 
 app.get('/admin/:collection', requirePageAuth, wrap(async (req, res, next) => {
@@ -251,7 +258,7 @@ app.get('/admin/:collection', requirePageAuth, wrap(async (req, res, next) => {
   // 注册的特定路由处理。
   if (!content.COLLECTIONS[collection]) return next();
   const entries = content.listEntries(collection);
-  res.send(views.listPage({ user: req.session.user, boot: currentBoot(req), collection, entries }));
+  res.send(views.listPage({ user: req.session.user, boot: currentBoot(req), collection, entries, trash: content.listTrash(collection) }));
 }));
 
 app.get('/admin/:collection/new', requirePageAuth, wrap(async (req, res) => {
@@ -446,7 +453,37 @@ app.post('/api/delete/:collection', requireApiAuth, requireCsrf, wrap(async (req
   const collection = req.params.collection;
   try {
     content.deleteEntry(collection, String(req.body?.id || ''));
-    res.json({ ok: true, message: '已删除。' });
+    res.json({ ok: true, message: '已移入回收站。' });
+  } catch (err) {
+    res.status(400).json({ error: err.message || '删除失败' });
+  }
+}));
+
+// —— 回收站（删除的内容可恢复或彻底删除） ——
+app.get('/api/trash/:collection', requireApiAuth, wrap(async (req, res) => {
+  try {
+    res.json({ items: content.listTrash(req.params.collection) });
+  } catch (err) {
+    res.status(400).json({ error: err.message || '读取回收站失败' });
+  }
+}));
+
+app.post('/api/trash/restore', requireApiAuth, requireCsrf, wrap(async (req, res) => {
+  try {
+    const result = content.restoreTrash(String(req.body?.collection || ''), String(req.body?.file || ''));
+    res.json({ ...result, message: `已恢复到 ${result.id}。` });
+  } catch (err) {
+    res.status(400).json({ error: err.message || '恢复失败' });
+  }
+}));
+
+app.post('/api/trash/purge', requireApiAuth, requireCsrf, wrap(async (req, res) => {
+  try {
+    const collection = String(req.body?.collection || '');
+    const result = req.body?.all
+      ? content.purgeAllTrash(collection)
+      : content.purgeTrash(collection, String(req.body?.file || ''));
+    res.json({ ...result, message: req.body?.all ? `已清空回收站（${result.removed} 项）。` : '已彻底删除。' });
   } catch (err) {
     res.status(400).json({ error: err.message || '删除失败' });
   }
@@ -531,7 +568,8 @@ function findUploadReferences(name) {
 }
 
 const SAFE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif', '.ico']);
-app.post('/api/upload', requireApiAuth, requireCsrf, express.raw({ type: () => true, limit: '15mb' }), wrap(async (req, res) => {
+// 单个图片 10MB 上限（与编辑器「插入图片」组件的客户端校验一致）。
+app.post('/api/upload', requireApiAuth, requireCsrf, express.raw({ type: () => true, limit: '10mb' }), wrap(async (req, res) => {
   const original = String(req.query.filename || 'image.png');
   const ext = path.extname(original).toLowerCase();
   if (!SAFE_EXT.has(ext)) return res.status(400).json({ error: '不支持的文件类型' });
@@ -639,6 +677,10 @@ app.use((req, res, next) => {
 
 // —— 错误处理 ——
 app.use((err, req, res, _next) => {
+  // 上传超限：给出可操作的提示而不是笼统的服务器错误。
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: '图片不能超过 10MB，请压缩后再上传。' });
+  }
   console.error('[admin]', err);
   if (req.path.startsWith('/api/')) return res.status(500).json({ error: '服务器内部错误' });
   return res.status(500).send('服务器内部错误');
@@ -647,4 +689,9 @@ app.use((err, req, res, _next) => {
 app.listen(PORT, () => {
   console.log(`[admin] 博客后台已启动: http://localhost:${PORT}/admin`);
   console.log(`[admin] 内容目录: ${path.join(ROOT, 'src', 'content')}`);
+  // 预热服务器监控采样（CPU/磁盘/网卡）：登录后首次打开仪表盘时缓存已就绪，
+  // 首屏渲染直接取缓存，不再等待 PowerShell / 延时采样。
+  import('./lib/server-monitor.mjs')
+    .then((m) => m.snapshot())
+    .catch(() => {});
 });

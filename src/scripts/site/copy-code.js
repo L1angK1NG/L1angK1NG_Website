@@ -1,4 +1,4 @@
-// 代码块一键复制按钮。
+// 代码块增强：右上角一键复制 + 左上角语言标签。
 export function initCopyCode(signal) {
   const writeClipboard = async (text) => {
     if (globalThis.navigator?.clipboard?.writeText) {
@@ -18,12 +18,35 @@ export function initCopyCode(signal) {
     return copied;
   };
 
+  // 语言标签：来自 Astro 代码高亮写在 pre 上的 data-language，
+  // 纯文本块不打标签（避免「plaintext」这种无信息噪声）。
+  const LANG_LABELS = {
+    js: 'JS', javascript: 'JS', ts: 'TS', typescript: 'TS', jsx: 'JSX', tsx: 'TSX',
+    html: 'HTML', xml: 'XML', css: 'CSS', scss: 'SCSS', json: 'JSON', bash: 'Shell',
+    sh: 'Shell', shell: 'Shell', zsh: 'Shell', powershell: 'PowerShell', cmd: 'CMD',
+    python: 'Python', py: 'Python', go: 'Go', rust: 'Rust', java: 'Java', c: 'C',
+    cpp: 'C++', 'c++': 'C++', 'c#': 'C#', csharp: 'C#', sql: 'SQL', yaml: 'YAML',
+    yml: 'YAML', toml: 'TOML', ini: 'INI', markdown: 'MD', md: 'MD', diff: 'DIFF',
+    astro: 'Astro', vue: 'Vue', php: 'PHP', ruby: 'Ruby', swift: 'Swift', kotlin: 'Kotlin',
+  };
+
   document.querySelectorAll('.post-content pre').forEach((pre) => {
     if (pre.querySelector('[data-copy-code]')) {
       return;
     }
 
     const code = pre.querySelector('code');
+
+    const lang = String(pre.dataset.language || '').toLowerCase();
+    const langLabel = LANG_LABELS[lang];
+    if (langLabel) {
+      const chip = document.createElement('span');
+      chip.className = 'code-lang';
+      chip.setAttribute('aria-hidden', 'true');
+      chip.textContent = langLabel;
+      pre.append(chip);
+    }
+
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy-code-button';

@@ -1713,7 +1713,7 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 
 .article__header h1 {
   margin-top: 0.8rem;
-  font-size: clamp(2rem, 5.5vw, 3.2rem);
+  font-size: clamp(2rem, 5vw, 2.9rem);
   letter-spacing: -0.025em;
   /* 同 .hero__title：扩展渐变绘制区防止字尾被裁 */
   padding-bottom: 0.14em;
@@ -1722,14 +1722,15 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 
 /* 抵消标题负下边距在 margin 折叠中吞掉的间距（用标题自身 clamp 字号换算） */
 .article__header h1 + p {
-  margin-top: calc(1.1rem + 0.14 * clamp(2rem, 5.5vw, 3.2rem));
+  margin-top: calc(1.1rem + 0.14 * clamp(2rem, 5vw, 2.9rem));
 }
 
 .article__header > p {
+  max-width: 40rem;
   margin-top: 1.1rem;
   color: var(--text-muted);
   font-size: 1.12rem;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 .article__header .tag-list {
@@ -1837,14 +1838,16 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 /* ---------- 文章正文 ---------- */
 .post-content {
   font-size: 1.15rem;
-  line-height: 1.8;
+  line-height: 1.82;
   overflow-wrap: break-word;
   text-wrap: pretty;
+  /* Safari 的中文排版细节：标点可以悬挂到行首/行尾之外 */
+  hanging-punctuation: first last;
 }
 
 .post-content :is(h1, h2, h3) {
-  margin-top: 2.8rem;
-  margin-bottom: 0.85rem;
+  margin-top: 2.6rem;
+  margin-bottom: 0.8rem;
   letter-spacing: -0.02em;
   scroll-margin-top: 6.5rem;
 }
@@ -1871,7 +1874,7 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 }
 
 .post-content h3 {
-  margin-top: 2rem;
+  margin-top: 1.9rem;
   color: var(--text);
   font-size: 1.2rem;
   font-weight: 750;
@@ -1885,7 +1888,13 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 .post-content pre,
 .post-content table,
 .post-content details {
-  margin: 1.5rem 0;
+  margin: 1.4rem 0;
+}
+
+/* 代码块与表格比文字更「重」，多给一点呼吸空间 */
+.post-content pre,
+.post-content table {
+  margin: 1.7rem 0;
 }
 
 .post-content ul,
@@ -1901,6 +1910,16 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
   color: var(--brand);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* 中文强调用着重号（字下加点），不用斜体 —— 汉字倾斜后笔画失真，
+   着重号才是中文排版的正统强调方式，也与楷体的书卷气相合。 */
+.post-content em {
+  font-style: normal;
+  -webkit-text-emphasis: filled dot currentColor;
+  text-emphasis: filled dot currentColor;
+  -webkit-text-emphasis-position: under right;
+  text-emphasis-position: under right;
 }
 
 .post-content a {
@@ -1934,6 +1953,87 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
   vertical-align: middle;
   border-radius: 4px;
   cursor: auto;
+}
+
+/* 独占一段的图片（rehype 升级为 figure）：图与图注作为一个整体居中呈现 */
+.post-content figure {
+  margin: 1.9rem 0;
+  text-align: center;
+}
+
+.post-content figure img {
+  margin: 0 auto;
+}
+
+.post-content figcaption {
+  margin-top: 0.65rem;
+  color: var(--text-faint);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+/* 文中插图（后台「插入图片」生成的面板）：按原图比例小号展示——
+   只缩不放（绝不超过原图尺寸），尺寸档位只是宽度上限；窄屏下统一收成
+   全宽上限，避免小图不可读。 */
+.post-content figure.post-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 1.9rem auto;
+}
+
+.post-content figure.post-figure img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  margin: 0;
+  border-radius: var(--radius-sm);
+}
+
+.post-content figure.post-figure figcaption {
+  margin-top: 0;
+}
+
+.post-content .post-figure--w33 { width: 33%; }
+.post-content .post-figure--w50 { width: 50%; }
+.post-content .post-figure--w75 { width: 75%; }
+.post-content .post-figure--w100 { width: 100%; }
+
+.post-content .post-figure--left {
+  align-items: flex-start;
+  margin-left: 0;
+  margin-right: auto;
+  text-align: left;
+}
+
+.post-content .post-figure--right {
+  align-items: flex-end;
+  margin-left: auto;
+  margin-right: 0;
+  text-align: right;
+}
+
+/* 标题锚点：悬停或键盘聚焦时露出「#」，方便分享某一节 */
+.post-content .heading-anchor {
+  margin-left: 0.35rem;
+  color: var(--text-faint);
+  font-size: 0.85em;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+
+.post-content :is(h2, h3):hover .heading-anchor,
+.post-content .heading-anchor:focus-visible {
+  opacity: 1;
+}
+
+.post-content .heading-anchor:hover {
+  color: var(--brand);
+  text-decoration: none;
 }
 
 /* ---------- 阅读进度 + 返回顶部 ---------- */
@@ -2093,6 +2193,20 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
   outline-offset: 2px;
 }
 
+/* 语言标签：代码块左上角的小眉标（与复制按钮同处顶栏一行） */
+.post-content pre .code-lang {
+  position: absolute;
+  top: 0.68rem;
+  left: 0.95rem;
+  color: rgba(245, 247, 251, 0.42);
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  user-select: none;
+}
+
 .post-content code {
   /* 文楷等宽本身就是等宽字体，代码块直接用它，缺字时才落到系统等宽 */
   font-family: "LXGW WenKai Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
@@ -2165,6 +2279,70 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 
 .post-content tr:last-child td {
   border-bottom-color: var(--hairline);
+}
+
+/* 分隔线：居中短线 + 菱形点缀，安静地划分章节（代替浏览器默认的通栏细线） */
+.post-content hr {
+  position: relative;
+  width: min(10rem, 36%);
+  height: 1px;
+  margin: 3rem auto;
+  border: none;
+  background: var(--border-strong);
+}
+
+.post-content hr::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  background: var(--brand);
+  opacity: 0.55;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* 键盘按键：立体小键帽 */
+.post-content kbd {
+  display: inline-block;
+  padding: 0.12em 0.5em;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* 文内高亮 */
+.post-content mark {
+  padding: 0.08em 0.22em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--brand) 22%, transparent);
+  color: inherit;
+}
+
+/* 脚注：正文末尾的安静注释区 */
+.post-content .footnotes {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--hairline);
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  line-height: 1.75;
+}
+
+.post-content .footnotes ol {
+  padding-left: 1.25rem;
+}
+
+.post-content .footnotes .footnote-backref {
+  margin-left: 0.35rem;
+  text-decoration: none;
 }
 
 /* ---------- 文章页脚 ---------- */
@@ -2543,6 +2721,47 @@ html[data-theme-mode="auto"] .theme-toggle .theme-toggle__auto {
 
   .post-content h2 {
     font-size: 1.35rem;
+  }
+
+  /* 移动端阅读：正文与代码块收一号，块级间距同步收紧 */
+  .post-content {
+    font-size: 1.05rem;
+    line-height: 1.8;
+  }
+
+  .post-content :is(h1, h2, h3) {
+    margin-top: 2.1rem;
+  }
+
+  .post-content pre {
+    padding: 1rem 1.05rem;
+    font-size: 0.85em;
+  }
+
+  .post-content pre:has(.copy-code-button) {
+    padding-top: 2.7rem;
+  }
+
+  .post-content blockquote {
+    padding: 0.85rem 1rem 0.85rem 2.35rem;
+  }
+
+  .post-content figure {
+    margin: 1.5rem 0;
+  }
+
+  /* 窄屏下插图统一收成全宽：33%/50% 的小图在手机上不可读 */
+  .post-content .post-figure--w33,
+  .post-content .post-figure--w50,
+  .post-content .post-figure--w75 {
+    width: 100%;
+  }
+}
+
+/* 触屏没有悬停：标题锚点常驻但压到最淡，不抢注意力 */
+@media (hover: none) {
+  .post-content .heading-anchor {
+    opacity: 0.45;
   }
 }
 

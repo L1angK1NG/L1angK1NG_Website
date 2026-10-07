@@ -9,6 +9,7 @@ import { forceRevealIncoming, initReveal } from './reveal.js';
 import { initImgFade } from './img-fade.js';
 import { initThemeToggle } from './theme-toggle.js';
 import { initCopyCode } from './copy-code.js';
+import { initHeadingAnchors } from './anchors.js';
 import { initLightbox } from './lightbox.js';
 import { initProgress } from './progress.js';
 import { initToc } from './toc.js';
@@ -25,6 +26,7 @@ const initPage = () => {
 
   initThemeToggle(signal);
   initCopyCode(signal);
+  initHeadingAnchors(signal);
   initLightbox(signal);
   initProgress(signal);
   initToc(signal);

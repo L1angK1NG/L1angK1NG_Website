@@ -156,8 +156,8 @@ export function publicRouter() {
     const limit = rateLimit(req, { key: 'view', max: 120, windowMs: 60 * 1000 });
     if (!limit.ok) return res.status(202).json({ ok: true }); // 打点失败静默，不影响浏览
     try {
-      const { path: p, title } = req.body || {};
-      await stats.recordView({ path: p, title, ip: req.ip });
+      const { path: p, title, ref, ua } = req.body || {};
+      await stats.recordView({ path: p, title, ip: req.ip, ref, ua, host: req.get('host') });
       res.json({ ok: true });
     } catch {
       res.json({ ok: true });

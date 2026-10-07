@@ -4,6 +4,8 @@
 // 无刷新导航的页面请求走 /admin-assets/page-loader.js（路由白名单在彼处校验）。
 import { sanitizeHtml } from '/admin-assets/shared/sanitize.js';
 import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js';
+import { initDashboard, stopDashboard } from '/admin-assets/dashboard.js?v=1918';
+import { initDateTimePickers } from '/admin-assets/picker.js?v=1910';
 
 (() => {
   // 页面级启动数据：无刷新导航换页后由 initPage 重新读取（boot / csrf 都是活值）。
@@ -167,10 +169,25 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
   // ===== 页面级初始化 =====
   // 每次页面内容切换（无刷新导航 / 操作后刷新）都会重跑：重新读取 boot 数据、
   // 为新 DOM 绑定交互。登录/退出/文档级委托等常驻绑定都在本函数之外。
+  // 每轮初始化轮换 AbortController：document 级监听（粘贴插图、Esc 等）
+  // 用 signal 绑定，换页时自动清理，不会跨页面累积。
+  let pageController = null;
+
   function initPage() {
     boot = window.__BOOT__ || {};
+    pageController?.abort();
+    pageController = new AbortController();
+    const { signal } = pageController;
 
-  // —— 编辑器 ——
+    // —— 仪表盘 ——
+    // 换页后先停掉旧页面的自动刷新定时器，再按需初始化（离开仪表盘即静止）。
+    stopDashboard();
+    if (document.getElementById('dash-root')) initDashboard();
+
+    // —— 自定义日期时间选择器（编辑器等页面的 [data-picker] 输入框） ——
+    initDateTimePickers(signal);
+
+  // —— 编辑器（写作优先版式） ——
   const bodyArea = document.getElementById('body');
   const slugInput = document.getElementById('slug');
   const urlPreview = document.getElementById('url-preview');
@@ -178,6 +195,7 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
   const isEditor = !!bodyArea && !!collection;
 
   if (isEditor) {
+    // slug 与 URL 预览（位于设置抽屉内）。
     const updateUrlPreview = () => {
       if (!urlPreview || !slugInput) return;
       const prefix = collection === 'posts' ? '/posts/' : '/notes/';
@@ -238,6 +256,337 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
         }
       });
     }
+
+    // —— 字数统计 ——
+    const countEl = document.getElementById('editor-count');
+    const updateCount = () => {
+      if (!countEl) return;
+      const text = bodyArea.value;
+      const cjk = (text.match(/[一-龥]/g) || []).length;
+      const words = (text.replace(/[一-龥]/g, ' ').match(/[A-Za-z0-9]+/g) || []).length;
+      const total = cjk + words;
+      countEl.textContent = `${total} 字 · 约 ${Math.max(1, Math.round(total / 300))} 分钟`;
+    };
+    bodyArea.addEventListener('input', updateCount);
+    updateCount();
+
+    // —— 多级撤销 / 重做 ——
+    // 插入图片、格式包裹这类程序化改写会清空浏览器原生撤销栈，因此自带快照
+    // 历史：连续打字 400ms 内合并为一组，程序化修改单独成组；Ctrl+Z 撤销、
+    // Ctrl+Y（或 Ctrl+Shift+Z）重做，恢复内容的同时恢复光标位置。
+    const history = {
+      stack: [{ value: bodyArea.value, selStart: bodyArea.selectionStart ?? 0, selEnd: bodyArea.selectionEnd ?? 0 }],
+      index: 0,
+      lastAt: 0,
+    };
+    const historySnapshot = () => ({
+      value: bodyArea.value,
+      selStart: bodyArea.selectionStart ?? 0,
+      selEnd: bodyArea.selectionEnd ?? 0,
+    });
+    const pushHistory = (force = false) => {
+      const now = Date.now();
+      const top = history.stack[history.index];
+      if (top.value === bodyArea.value) return;
+      if (!force && now - history.lastAt < 400 && history.index === history.stack.length - 1) {
+        // 输入合并：把这组打字的终点并入顶部快照。
+        history.stack[history.index] = historySnapshot();
+      } else {
+        history.stack = history.stack.slice(0, history.index + 1);
+        history.stack.push(historySnapshot());
+        if (history.stack.length > 120) history.stack.shift();
+        history.index = history.stack.length - 1;
+      }
+      history.lastAt = now;
+    };
+    const restoreHistory = (snap) => {
+      bodyArea.value = snap.value;
+      bodyArea.selectionStart = snap.selStart;
+      bodyArea.selectionEnd = snap.selEnd;
+      bodyArea.focus();
+      updateCount();
+    };
+    const undoEdit = () => {
+      if (history.index <= 0) return toast('没有可撤销的操作');
+      history.index -= 1;
+      restoreHistory(history.stack[history.index]);
+      history.lastAt = 0; // 撤销后的下一次输入另起一组
+    };
+    const redoEdit = () => {
+      if (history.index >= history.stack.length - 1) return toast('没有可重做的操作');
+      history.index += 1;
+      restoreHistory(history.stack[history.index]);
+      history.lastAt = 0;
+    };
+    bodyArea.addEventListener('input', () => pushHistory(false));
+
+    // —— Markdown 快捷格式 ——
+    const wrapSelection = (before, after, placeholder) => {
+      const start = bodyArea.selectionStart ?? bodyArea.value.length;
+      const end = bodyArea.selectionEnd ?? start;
+      const selected = bodyArea.value.slice(start, end) || placeholder;
+      bodyArea.value = bodyArea.value.slice(0, start) + before + selected + after + bodyArea.value.slice(end);
+      bodyArea.selectionStart = start + before.length;
+      bodyArea.selectionEnd = start + before.length + selected.length;
+      bodyArea.focus();
+      updateCount();
+      pushHistory(true);
+    };
+    const linePrefix = (prefix) => {
+      const start = bodyArea.selectionStart ?? bodyArea.value.length;
+      const lineStart = bodyArea.value.lastIndexOf('\n', start - 1) + 1;
+      bodyArea.value = bodyArea.value.slice(0, lineStart) + prefix + bodyArea.value.slice(lineStart);
+      bodyArea.selectionStart = bodyArea.selectionEnd = start + prefix.length;
+      bodyArea.focus();
+      updateCount();
+      pushHistory(true);
+    };
+    const FORMATS = {
+      bold: () => wrapSelection('**', '**', '加粗文字'),
+      italic: () => wrapSelection('*', '*', '斜体文字'),
+      code: () => wrapSelection('`', '`', 'code'),
+      link: () => wrapSelection('[', '](https://)', '链接文字'),
+      quote: () => linePrefix('> '),
+      list: () => linePrefix('- '),
+      heading: () => linePrefix('## '),
+    };
+    document.querySelectorAll('[data-fmt]').forEach((btn) => {
+      btn.addEventListener('click', () => FORMATS[btn.getAttribute('data-fmt')]?.());
+    });
+
+    // —— 工具栏按钮反馈 ——
+    // 点击后短促高亮（is-pressed 淡出），每次点击都有明确回应；
+    // 插图弹窗打开期间「插图」按钮保持激活态（is-active）。
+    document.querySelector('.editor__toolbar')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tool-btn');
+      if (!btn) return;
+      btn.classList.add('is-pressed');
+      window.setTimeout(() => btn.classList.remove('is-pressed'), 320);
+    });
+
+    // —— 图片插入 ——
+    // 两条路径：弹窗（媒体库选图 / 上传，配尺寸·对齐·图注）与拖拽/粘贴正文
+    // 即时插入（沿用上次的尺寸/对齐选择）。多张批量按顺序插入。
+    const modal = document.getElementById('img-modal');
+    const galleryEl = document.getElementById('img-gallery');
+    const thumbEl = document.getElementById('img-thumb');
+    const selectedNameEl = document.getElementById('img-selected-name');
+    const insertBtn = document.getElementById('img-insert');
+    const captionInput = document.getElementById('img-caption');
+    const fileInput = document.getElementById('img-file');
+    const dropZone = document.getElementById('img-drop');
+    const imgState = { url: '', size: '33', align: 'center' };
+
+    const escText = (s) =>
+      String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const isImageFile = (file) =>
+      /\.(jpe?g|png|webp)$/i.test(file.name) || ['image/jpeg', 'image/png', 'image/webp'].includes(file.type);
+    const validateImage = (file) => {
+      if (!isImageFile(file)) return '仅支持 JPG、PNG、WebP 格式的图片';
+      if (file.size > 10 * 1024 * 1024) return `图片不能超过 10MB（当前 ${(file.size / 1048576).toFixed(1)}MB）`;
+      return '';
+    };
+
+    // 在光标处插入一段/多段图片片段（替换选区；与上下文保持空行独立成段）。
+    const insertAtCaret = (snippets) => {
+      const start = bodyArea.selectionStart ?? bodyArea.value.length;
+      const end = bodyArea.selectionEnd ?? start;
+      const before = bodyArea.value.slice(0, start);
+      const after = bodyArea.value.slice(end);
+      const padBefore = before && !before.endsWith('\n') ? '\n\n' : before.endsWith('\n\n') ? '' : '\n';
+      const padAfter = after.startsWith('\n\n') || after === '' ? '\n' : '\n\n';
+      const inserted = padBefore + snippets.join('\n\n') + padAfter;
+      bodyArea.value = before + inserted + after;
+      bodyArea.selectionStart = bodyArea.selectionEnd = start + inserted.length;
+      bodyArea.focus();
+      updateCount();
+      pushHistory(true);
+    };
+
+    // 生成图片片段：有图注时展开为多行块（figcaption 显示在图片下方）。
+    const buildFigure = (url, caption) => {
+      const alt = escText(caption || '');
+      const imgTag = `<img src="${escText(url)}" alt="${alt}" loading="lazy" decoding="async">`;
+      const cls = `post-figure post-figure--${imgState.align} post-figure--w${imgState.size}`;
+      return caption
+        ? `<figure class="${cls}">\n  ${imgTag}\n  <figcaption>${escText(caption)}</figcaption>\n</figure>`
+        : `<figure class="${cls}">${imgTag}</figure>`;
+    };
+
+    const galleryItemHtml = (url, name) =>
+      `<button type="button" class="img-gallery__item" data-url="${escText(url)}" title="${escText(name)}"><img src="${escText(url)}" alt="${escText(name)}" loading="lazy" /></button>`;
+
+    const selectImage = (url, name) => {
+      imgState.url = url;
+      thumbEl.src = url;
+      thumbEl.hidden = false;
+      selectedNameEl.textContent = name || url;
+      insertBtn.disabled = false;
+      galleryEl.querySelectorAll('.img-gallery__item').forEach((el) => {
+        el.classList.toggle('is-selected', el.getAttribute('data-url') === url);
+      });
+    };
+
+    const loadGallery = async () => {
+      galleryEl.innerHTML = '<p class="empty">媒体库加载中…</p>';
+      try {
+        const { items } = await api('/api/media');
+        galleryEl.innerHTML = items.length
+          ? items.slice(0, 36).map((f) => galleryItemHtml(f.url, f.name)).join('')
+          : '<p class="empty">媒体库还是空的，上传一张吧。</p>';
+      } catch (err) {
+        galleryEl.innerHTML = `<p class="empty">媒体库加载失败：${escText(err.message)}</p>`;
+      }
+    };
+
+    const openModal = () => {
+      modal.hidden = false;
+      document.getElementById('img-insert-btn')?.classList.add('is-active');
+      reveal(modal.querySelector('.modal__card'));
+      loadGallery();
+    };
+    const closeModal = () => {
+      modal.hidden = true;
+      document.getElementById('img-insert-btn')?.classList.remove('is-active');
+      imgState.url = '';
+      thumbEl.hidden = true;
+      thumbEl.removeAttribute('src');
+      selectedNameEl.textContent = '尚未选择图片';
+      insertBtn.disabled = true;
+      captionInput.value = '';
+    };
+
+    document.getElementById('img-insert-btn')?.addEventListener('click', openModal);
+    modal.querySelectorAll('[data-img-close]').forEach((el) => el.addEventListener('click', closeModal));
+
+    // 尺寸 / 对齐胶囊（跨插入记忆上次选择）。
+    modal.querySelectorAll('.chips .chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const group = chip.closest('.chips').getAttribute('data-chip-group');
+        chip.parentElement.querySelectorAll('.chip').forEach((c) => c.classList.toggle('is-active', c === chip));
+        imgState[group] = chip.getAttribute(`data-${group}`);
+      });
+    });
+
+    galleryEl.addEventListener('click', (e) => {
+      const item = e.target.closest('.img-gallery__item');
+      if (item) selectImage(item.getAttribute('data-url'), item.getAttribute('title'));
+    });
+
+    // 弹窗内上传：逐张上传后自动选中，多张全部进入媒体库网格。
+    const uploadIntoModal = async (fileList) => {
+      const files = [...fileList].filter(isImageFile);
+      if (!files.length) return;
+      for (const file of files) {
+        const invalid = validateImage(file);
+        if (invalid) {
+          toast(`${file.name}：${invalid}`, true);
+          continue;
+        }
+        try {
+          const result = await api(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+            method: 'POST',
+            body: file,
+            raw: true,
+          });
+          galleryEl.insertAdjacentHTML('afterbegin', galleryItemHtml(result.url, file.name));
+          selectImage(result.url, file.name);
+        } catch (err) {
+          toast(`${file.name}：${err.message}`, true);
+        }
+      }
+    };
+
+    document.getElementById('img-pick')?.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      // 先清空 value：同一文件再次被选中时也能触发 change。
+      const picked = fileInput.files ? [...fileInput.files] : [];
+      fileInput.value = '';
+      if (picked.length) uploadIntoModal(picked);
+    });
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('is-over');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('is-over'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('is-over');
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) uploadIntoModal(files);
+    });
+
+    // 确认插入（带图注的单张流程）。
+    insertBtn.addEventListener('click', () => {
+      if (!imgState.url) return toast('请先选择或上传图片', true);
+      insertAtCaret([buildFigure(imgState.url, captionInput.value.trim())]);
+      closeModal();
+      toast('图片已插入正文');
+    });
+
+    // —— 拖拽 / 粘贴到正文 = 即时插入（无需弹窗，多张按顺序） ——
+    const instantInsert = async (fileList) => {
+      const files = [...fileList].filter(isImageFile);
+      if (!files.length) return;
+      const urls = [];
+      for (const file of files) {
+        const invalid = validateImage(file);
+        if (invalid) {
+          toast(`${file.name}：${invalid}`, true);
+          continue;
+        }
+        try {
+          const result = await api(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+            method: 'POST',
+            body: file,
+            raw: true,
+          });
+          urls.push(result.url);
+        } catch (err) {
+          toast(`${file.name}：${err.message}`, true);
+        }
+      }
+      if (urls.length) {
+        insertAtCaret(urls.map((url) => buildFigure(url, '')));
+        toast(`已插入 ${urls.length} 张图片`);
+      }
+    };
+
+    bodyArea.addEventListener('dragover', (e) => e.preventDefault());
+    bodyArea.addEventListener('drop', (e) => {
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && [...files].some(isImageFile)) {
+        e.preventDefault();
+        instantInsert(files);
+      }
+    });
+
+    // 粘贴：弹窗打开时上传进弹窗；否则直接插入正文。
+    document.addEventListener('paste', (e) => {
+      const files = e.clipboardData && e.clipboardData.files;
+      if (!files || !files.length || !isImageFile(files[0])) return;
+      e.preventDefault();
+      if (modal.hidden) instantInsert(files);
+      else uploadIntoModal(files);
+    }, { signal });
+
+    // Esc 关闭图片弹窗；Ctrl+Z / Ctrl+Y 在正文区撤销与重做。
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) {
+        closeModal();
+        return;
+      }
+      const inBody = e.target === bodyArea || Boolean(e.target.closest?.('.editor__toolbar'));
+      if (!inBody || !(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undoEdit();
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        redoEdit();
+      }
+    }, { signal });
   }
 
   // —— 上传（封面字段按钮 + 媒体页面） ——
@@ -321,22 +670,68 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
     });
   });
 
-  // —— 删除（列表页面） ——
+  // —— 删除（列表页面，移入回收站） ——
   document.querySelectorAll('[data-delete]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-delete');
       const coll = btn.getAttribute('data-collection');
-      if (!window.confirm(`确定删除「${id}」吗？此操作不可撤销。`)) return;
+      if (!window.confirm(`确定删除「${id}」吗？删除后会移入回收站，可随时恢复。`)) return;
       try {
-        await api(`/api/delete/${coll}`, { method: 'POST', body: { id } });
-        toast('已删除');
-        const row = btn.closest('tr');
-        if (row) row.remove();
+        const result = await api(`/api/delete/${coll}`, { method: 'POST', body: { id } });
+        toast(result.message || '已移入回收站');
+        refreshPage();
       } catch (err) {
         toast(err.message, true);
       }
     });
   });
+
+  // —— 回收站（恢复 / 彻底删除 / 清空） ——
+  document.querySelectorAll('[data-trash-restore]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        const result = await api('/api/trash/restore', {
+          method: 'POST',
+          body: { collection: btn.getAttribute('data-collection'), file: btn.getAttribute('data-trash-restore') },
+        });
+        toast(result.message || '已恢复');
+        refreshPage();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+  document.querySelectorAll('[data-trash-purge]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!window.confirm('彻底删除后无法找回，确定吗？')) return;
+      try {
+        const result = await api('/api/trash/purge', {
+          method: 'POST',
+          body: { collection: btn.getAttribute('data-collection'), file: btn.getAttribute('data-trash-purge') },
+        });
+        toast(result.message || '已彻底删除');
+        refreshPage();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+  const purgeAllBtn = document.getElementById('trash-purge-all');
+  if (purgeAllBtn) {
+    purgeAllBtn.addEventListener('click', async () => {
+      if (!window.confirm('确定清空回收站吗？所有条目将被彻底删除，无法找回。')) return;
+      try {
+        const result = await api('/api/trash/purge', {
+          method: 'POST',
+          body: { collection: purgeAllBtn.getAttribute('data-collection'), all: true },
+        });
+        toast(result.message || '已清空');
+        refreshPage();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  }
 
   // —— 动态模块（页面内容 / 项目 / 导航 / 友链 / 音乐 / 公告 / 评论） ——
   const bind = (sel, evt, fn) => {
@@ -900,7 +1295,14 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
       if (!ts) return '';
       const d = new Date(ts);
       const pad = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+    // 自定义选择器的值（'YYYY-MM-DD' 或 'YYYY-MM-DD HH:mm'）转本地时间戳：
+    // 手动解析年月日时分，避免 'YYYY-MM-DD' 被 Date 按 UTC 解析偏 8 小时。
+    const parseLocalMs = (v) => {
+      const m = String(v || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/);
+      if (!m) return 0;
+      return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0)).getTime();
     };
     const openEditor = (a) => {
       reveal(annEditor);
@@ -945,8 +1347,8 @@ import { isAllowedAdminRoute, loadAdminPage } from '/admin-assets/page-loader.js
             title: val('an-title'),
             content: val('an-content'),
             link: val('an-link'),
-            startAt: start ? new Date(start).getTime() : 0,
-            endAt: end ? new Date(end).getTime() : 0,
+            startAt: parseLocalMs(start),
+            endAt: parseLocalMs(end),
             enabled: document.getElementById('an-enabled').checked,
           },
         });
